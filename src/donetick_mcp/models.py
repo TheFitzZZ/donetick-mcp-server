@@ -241,7 +241,7 @@ class Chore(BaseModel):
     description: Optional[str] = Field(None, description="Chore description")
     frequencyType: str = Field(..., description="Frequency type (once, daily, weekly, etc)")
     frequency: int = Field(..., description="Frequency value")
-    frequencyMetadata: dict[str, Any] = Field(default_factory=dict)
+    frequencyMetadata: Optional[dict[str, Any]] = Field(None, description="Frequency metadata")
     nextDueDate: Optional[str] = Field(None, description="Next due date (ISO 8601)")
     isRolling: bool = Field(default=False, description="Is rolling schedule")
     assignedTo: int = Field(..., description="User ID of assigned user")
@@ -252,8 +252,8 @@ class Chore(BaseModel):
     )
     isActive: bool = Field(default=True, description="Is chore active")
     notification: bool = Field(default=False, description="Enable notifications")
-    notificationMetadata: NotificationMetadata = Field(
-        default_factory=NotificationMetadata,
+    notificationMetadata: Optional[NotificationMetadata] = Field(
+        None,
         description="Notification settings",
     )
     labels: Optional[list[str]] = Field(None, description="Legacy labels")
@@ -263,8 +263,8 @@ class Chore(BaseModel):
     updatedAt: str = Field(..., description="Last update timestamp (ISO 8601)")
     createdBy: int = Field(..., description="Creator user ID")
     updatedBy: Optional[int] = Field(None, description="Last updater user ID")
-    status: Optional[str] = Field(None, description="Chore status")
-    priority: Optional[int] = Field(None, ge=1, le=5, description="Priority (1-5)")
+    status: Optional[Any] = Field(None, description="Chore status (can be string or int)")
+    priority: Optional[int] = Field(None, ge=0, le=5, description="Priority (0-5, 0=none)")
     isPrivate: bool = Field(default=False, description="Is private chore")
     points: Optional[int] = Field(None, description="Points awarded")
     subTasks: list[Any] = Field(default_factory=list, description="Sub-tasks")
@@ -308,9 +308,12 @@ class CircleMember(BaseModel):
     """Circle member model."""
 
     userId: int = Field(..., description="User ID")
-    userName: str = Field(..., description="User name")
-    userEmail: str = Field(..., description="User email")
-    role: str = Field(..., description="User role in circle")
+    userName: Optional[str] = Field(None, alias="displayName", description="User display name")
+    userEmail: Optional[str] = Field(None, description="User email")
+    role: Optional[str] = Field(None, description="User role in circle")
+
+    class Config:
+        populate_by_name = True  # Allow both field name and alias
 
 
 class APIError(BaseModel):
