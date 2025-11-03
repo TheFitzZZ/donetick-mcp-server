@@ -1,10 +1,11 @@
 """Donetick API client with rate limiting and retry logic."""
 
 import asyncio
+import json as json_lib
 import logging
 import random
 import time
-from typing import Any, Optional
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
@@ -65,6 +66,7 @@ class DonetickClient:
         api_token: Optional[str] = None,
         rate_limit_per_second: Optional[float] = None,
         rate_limit_burst: Optional[int] = None,
+        cache_ttl: float = 60.0,
     ):
         """
         Initialize Donetick API client.
@@ -74,6 +76,7 @@ class DonetickClient:
             api_token: API token (defaults to config)
             rate_limit_per_second: Rate limit in requests per second (defaults to config)
             rate_limit_burst: Maximum burst size (defaults to config)
+            cache_ttl: Cache time-to-live in seconds (default: 60.0)
         """
         self.base_url = (base_url or config.donetick_base_url).rstrip("/")
         self.api_token = api_token or config.donetick_api_token
@@ -81,6 +84,10 @@ class DonetickClient:
             rate=rate_limit_per_second or config.rate_limit_per_second,
             capacity=rate_limit_burst or config.rate_limit_burst,
         )
+
+        # Chore caching to optimize get_chore performance
+        self._chore_cache: Dict[int, Tuple[float, Chore]] = {}
+        self._cache_ttl = cache_ttl
 
         # Configure httpx client with connection pooling and timeouts
         self.client = httpx.AsyncClient(
@@ -91,8 +98,8 @@ class DonetickClient:
             },
             limits=httpx.Limits(
                 max_connections=100,
-                max_keepalive_connections=20,
-                keepalive_expiry=5.0,
+                max_keepalive_connections=50,
+                keepalive_expiry=30.0,
             ),
             timeout=httpx.Timeout(
                 connect=5.0,
@@ -100,6 +107,7 @@ class DonetickClient:
                 write=5.0,
                 pool=2.0,
             ),
+            verify=True,  # Enforce certificate verification
         )
 
     async def __aenter__(self):
@@ -160,8 +168,12 @@ class DonetickClient:
                 # Raise for other HTTP errors
                 response.raise_for_status()
 
-                # Parse JSON response
-                return response.json()
+                # Parse JSON response with error handling
+                try:
+                    return response.json()
+                except json_lib.JSONDecodeError as e:
+                    logger.error(f"Invalid JSON response from {url}: {response.text[:200]}")
+                    raise ValueError(f"Invalid JSON response from API: {e}") from e
 
             except httpx.TimeoutException as e:
                 if attempt == max_retries - 1:
@@ -233,10 +245,11 @@ class DonetickClient:
 
     async def get_chore(self, chore_id: int) -> Optional[Chore]:
         """
-        Get a specific chore by ID.
+        Get a specific chore by ID with caching.
 
         Note: Since GET /chore/:id doesn't exist in the API,
-        this fetches all chores and filters client-side.
+        this fetches all chores and filters client-side. Results
+        are cached to reduce API calls.
 
         Args:
             chore_id: Chore ID
@@ -244,9 +257,25 @@ class DonetickClient:
         Returns:
             Chore object if found, None otherwise
         """
-        logger.info(f"Fetching chore {chore_id}")
+        # Check cache
+        if chore_id in self._chore_cache:
+            timestamp, chore = self._chore_cache[chore_id]
+            if time.time() - timestamp < self._cache_ttl:
+                logger.debug(f"Cache hit for chore {chore_id}")
+                return chore
+            else:
+                logger.debug(f"Cache expired for chore {chore_id}")
+
+        # Cache miss or expired - fetch all chores
+        logger.info(f"Fetching all chores to find {chore_id} (cache miss)")
         chores = await self.list_chores()
 
+        # Update cache for all chores
+        current_time = time.time()
+        for chore in chores:
+            self._chore_cache[chore.id] = (current_time, chore)
+
+        # Find and return the requested chore
         for chore in chores:
             if chore.id == chore_id:
                 logger.info(f"Found chore {chore_id}: {chore.name}")
@@ -254,6 +283,11 @@ class DonetickClient:
 
         logger.warning(f"Chore {chore_id} not found")
         return None
+
+    def clear_cache(self):
+        """Clear the chore cache."""
+        self._chore_cache.clear()
+        logger.debug("Chore cache cleared")
 
     async def create_chore(self, chore: ChoreCreate) -> Chore:
         """

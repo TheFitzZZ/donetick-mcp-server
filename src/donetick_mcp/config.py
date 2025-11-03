@@ -25,17 +25,37 @@ class Config:
         self._validate()
 
     def _validate(self):
-        """Validate that required configuration is present."""
+        """Validate that required configuration is present and secure."""
+        errors = []
+
+        # Check base URL
         if not self.donetick_base_url:
-            raise ValueError(
+            errors.append(
                 "DONETICK_BASE_URL environment variable is required. "
                 "Please set it to your Donetick instance URL."
             )
+        else:
+            # Enforce HTTPS for security
+            if not self.donetick_base_url.startswith("https://"):
+                errors.append(
+                    f"DONETICK_BASE_URL must use HTTPS for security. "
+                    f"Got: {self.donetick_base_url[:50]}"
+                )
 
+        # Check API token
         if not self.donetick_api_token:
-            raise ValueError(
+            errors.append(
                 "DONETICK_API_TOKEN environment variable is required. "
                 "Please generate a token in Donetick Settings > Access Token."
+            )
+        elif len(self.donetick_api_token) < 10:
+            errors.append("DONETICK_API_TOKEN appears invalid (too short)")
+
+        # Raise all errors together
+        if errors:
+            raise ValueError(
+                "Configuration validation failed:\n" +
+                "\n".join(f"  - {error}" for error in errors)
             )
 
         # Normalize base URL (remove trailing slash)

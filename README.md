@@ -5,9 +5,13 @@ A production-ready Model Context Protocol (MCP) server for [Donetick](https://do
 ## Features
 
 - **5 Core Tools**: List, get, create, complete, and delete chores
+- **Full Chore Configuration**: Support for recurrence, assignments, notifications, labels, priority, points, and more
+- **Smart Caching**: Intelligent caching for get_chore operations (60s TTL by default)
 - **Rate Limiting**: Token bucket algorithm prevents API overload
 - **Retry Logic**: Exponential backoff with jitter for resilient operations
 - **Async/Await**: Non-blocking operations using httpx
+- **Input Validation**: Pydantic field validators with sanitization
+- **Security Hardened**: HTTPS enforcement, sanitized logging, secure error messages
 - **Docker Support**: Containerized deployment with security best practices
 - **Comprehensive Testing**: Unit and integration tests with pytest
 - **Type Safety**: Pydantic models for request/response validation
@@ -161,17 +165,57 @@ Show me details of chore 123
 
 ### 3. create_chore
 
-Create a new chore.
+Create a new chore with full configuration support.
 
-**Parameters**:
+**Basic Parameters**:
 - `name` (string, required): Chore name (1-200 characters)
-- `description` (string, optional): Chore description
+- `description` (string, optional): Chore description (max 5000 characters)
 - `due_date` (string, optional): Due date in YYYY-MM-DD or RFC3339 format
 - `created_by` (integer, optional): Creator user ID
 
-**Example**:
+**Recurrence/Frequency Parameters**:
+- `frequency_type` (string, optional): How often chore repeats - "once", "daily", "weekly", "monthly", "yearly", "interval_based" (default: "once")
+- `frequency` (integer, optional): Frequency multiplier, e.g., 1=weekly, 2=biweekly (default: 1)
+- `frequency_metadata` (object, optional): Additional frequency config like `{"days": [1,3,5], "time": "09:00"}`
+- `is_rolling` (boolean, optional): Rolling schedule (next due based on completion) vs fixed (default: false)
+
+**User Assignment Parameters**:
+- `assigned_to` (integer, optional): Primary assigned user ID
+- `assignees` (array, optional): Multiple assignees as `[{"userId": 1}, {"userId": 2}]`
+- `assign_strategy` (string, optional): Assignment strategy - "least_completed", "round_robin", "random" (default: "least_completed")
+
+**Notification Parameters**:
+- `notification` (boolean, optional): Enable notifications (default: false)
+- `nagging` (boolean, optional): Enable nagging/reminder notifications (default: false)
+- `predue` (boolean, optional): Enable pre-due date notifications (default: false)
+
+**Organization Parameters**:
+- `priority` (integer, optional): Priority level 1-5 (1=lowest, 5=highest)
+- `labels` (array, optional): Label tags like `["cleaning", "outdoor"]`
+
+**Status Parameters**:
+- `is_active` (boolean, optional): Active status - inactive chores are hidden (default: true)
+- `is_private` (boolean, optional): Private chore visible only to creator (default: false)
+
+**Gamification Parameters**:
+- `points` (integer, optional): Points awarded for completion
+
+**Advanced Parameters**:
+- `sub_tasks` (array, optional): Sub-tasks/checklist items
+
+**Examples**:
 ```
+Create a simple one-time chore:
 Create a chore called "Take out trash" due on 2025-11-10
+
+Create a recurring chore with notifications:
+Create a weekly chore "Clean kitchen" every Monday at 9am with priority 4,
+enable nagging notifications, and assign it to user 1
+
+Create an advanced chore:
+Create a chore "Grocery shopping" that repeats weekly on Mondays and Wednesdays,
+assign to users 1 and 2 using round robin strategy, with priority 3,
+labels "shopping" and "outdoor", and award 10 points
 ```
 
 ### 4. complete_chore
