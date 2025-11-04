@@ -410,13 +410,50 @@ class ChoreUpdate(BaseModel):
                 "name": "Take out recycling",
                 "description": "Biweekly recycling collection",
                 "nextDueDate": "2025-11-17",
+                "priority": 2,
+                "points": 10,
+                "isPrivate": False,
             }
         }
     )
 
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None)
-    nextDueDate: Optional[str] = Field(None)
+    # Basic fields
+    name: Optional[str] = Field(None, min_length=1, max_length=200, description="Chore name")
+    description: Optional[str] = Field(None, description="Chore description")
+    nextDueDate: Optional[str] = Field(None, description="Next due date (ISO 8601)")
+
+    # Scheduling
+    frequencyType: Optional[str] = Field(None, description="Frequency type (once, daily, weekly, etc)")
+    frequency: Optional[int] = Field(None, ge=1, description="Frequency value")
+    frequencyMetadata: Optional[dict[str, Any]] = Field(None, description="Frequency metadata (days, time, timezone, etc)")
+    isRolling: Optional[bool] = Field(None, description="Is rolling schedule")
+
+    # Assignment
+    assignStrategy: Optional[str] = Field(None, description="Assignment strategy")
+    assignees: Optional[list[dict[str, int]]] = Field(None, description="List of assignees with userId")
+
+    # Notifications
+    notification: Optional[bool] = Field(None, description="Enable notifications")
+    notificationMetadata: Optional[dict[str, Any]] = Field(None, description="Notification metadata (templates, nagging, predue)")
+
+    # Status & Priority
+    isActive: Optional[bool] = Field(None, description="Is chore active")
+    priority: Optional[int] = Field(None, ge=0, le=4, description="Priority (0=unset, 1=lowest, 4=highest)")
+
+    # Gamification & Labels
+    points: Optional[int] = Field(None, ge=0, description="Points awarded for completion")
+    labelsV2: Optional[list[dict[str, int]]] = Field(None, description="List of labels with id")
+
+    # Privacy & Approval
+    isPrivate: Optional[bool] = Field(None, description="Hide from other circle members")
+    requireApproval: Optional[bool] = Field(None, description="Requires approval to mark complete")
+
+    # Completion & Deadline Settings
+    completionWindow: Optional[int] = Field(None, ge=0, description="SECONDS before due time for early completion")
+    deadlineOffset: Optional[int] = Field(None, ge=0, description="SECONDS after due time for grace period")
+
+    # Subtasks (can be updated)
+    subTasks: Optional[list[dict[str, Any]]] = Field(None, description="List of subtasks with name and orderId")
 
 
 class Chore(BaseModel):

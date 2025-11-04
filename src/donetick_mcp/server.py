@@ -13,7 +13,7 @@ from mcp.types import TextContent, Tool
 from . import __version__
 from .client import DonetickClient
 from .config import config
-from .models import ChoreCreate
+from .models import ChoreCreate, ChoreUpdate
 
 # Configure logging
 config.configure_logging()
@@ -321,6 +321,105 @@ async def list_tools() -> list[Tool]:
                     "completed_by": {
                         "type": "integer",
                         "description": "User ID who completed the chore (optional)",
+                    },
+                },
+                "required": ["chore_id"],
+            },
+        ),
+        Tool(
+            name="update_chore",
+            description=(
+                "Update an existing chore with new values. "
+                "Can modify any chore property including name, description, schedule, assignees, "
+                "priority, points, labels, privacy settings, and more. "
+                "Only provide fields you want to change - other fields remain unchanged. "
+                "Premium/Plus feature."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "chore_id": {
+                        "type": "integer",
+                        "description": "The ID of the chore to update",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "New chore name",
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "New chore description",
+                    },
+                    "nextDueDate": {
+                        "type": "string",
+                        "description": "New due date (ISO 8601 format, e.g., '2025-11-17')",
+                    },
+                    "priority": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4,
+                        "description": "Priority level (0=unset, 1=lowest, 4=highest)",
+                    },
+                    "points": {
+                        "type": "integer",
+                        "description": "Points awarded for completion",
+                    },
+                    "isActive": {
+                        "type": "boolean",
+                        "description": "Enable/disable chore",
+                    },
+                    "isPrivate": {
+                        "type": "boolean",
+                        "description": "Hide from other circle members",
+                    },
+                    "requireApproval": {
+                        "type": "boolean",
+                        "description": "Requires approval to mark complete",
+                    },
+                    "frequencyType": {
+                        "type": "string",
+                        "description": "Frequency type (once, daily, weekly, monthly, yearly, days_of_the_week)",
+                    },
+                    "frequency": {
+                        "type": "integer",
+                        "description": "Frequency value (e.g., 2 for every 2 weeks)",
+                    },
+                    "frequencyMetadata": {
+                        "type": "object",
+                        "description": "Frequency metadata with days, time, timezone, weekPattern",
+                    },
+                    "isRolling": {
+                        "type": "boolean",
+                        "description": "Rolling schedule (based on completion) vs fixed schedule",
+                    },
+                    "assignStrategy": {
+                        "type": "string",
+                        "enum": [
+                            "least_completed",
+                            "least_assigned",
+                            "round_robin",
+                            "random",
+                            "keep_last_assigned",
+                            "random_except_last_assigned",
+                            "no_assignee",
+                        ],
+                        "description": "Assignment rotation strategy",
+                    },
+                    "notification": {
+                        "type": "boolean",
+                        "description": "Enable notifications",
+                    },
+                    "notificationMetadata": {
+                        "type": "object",
+                        "description": "Notification settings (templates, nagging, predue)",
+                    },
+                    "completionWindow": {
+                        "type": "integer",
+                        "description": "SECONDS before due time when early completion is allowed",
+                    },
+                    "deadlineOffset": {
+                        "type": "integer",
+                        "description": "SECONDS after due time for grace period",
                     },
                 },
                 "required": ["chore_id"],
@@ -697,6 +796,32 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                     + json.dumps(chore.model_dump(), indent=2),
                 )
             ]
+
+        elif name == "update_chore":
+            chore_id = arguments.pop("chore_id")
+
+            # Build ChoreUpdate model from provided arguments
+            # Filter out None values to only include fields that should be updated
+            update_data = {k: v for k, v in arguments.items() if v is not None}
+
+            try:
+                update = ChoreUpdate(**update_data)
+                chore = await client.update_chore(chore_id, update)
+
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Successfully updated chore '{chore.name}' (ID: {chore.id})\n\n"
+                        + json.dumps(chore.model_dump(), indent=2),
+                    )
+                ]
+            except ValueError as e:
+                return [
+                    TextContent(
+                        type="text",
+                        text=f"Validation error: {str(e)}",
+                    )
+                ]
 
         elif name == "delete_chore":
             chore_id = arguments["chore_id"]

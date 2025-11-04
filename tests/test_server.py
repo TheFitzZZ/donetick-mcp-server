@@ -60,13 +60,14 @@ class TestMCPServer:
         """Test listing available tools."""
         tools = await list_tools()
 
-        assert len(tools) == 12  # 5 chore tools + 4 label tools + 3 user/member tools
+        assert len(tools) == 13  # 6 chore tools + 4 label tools + 3 user/member tools
         tool_names = [tool.name for tool in tools]
         # Chore tools
         assert "list_chores" in tool_names
         assert "get_chore" in tool_names
         assert "create_chore" in tool_names
         assert "complete_chore" in tool_names
+        assert "update_chore" in tool_names
         assert "delete_chore" in tool_names
         # Label tools
         assert "list_labels" in tool_names
@@ -290,3 +291,609 @@ class TestMCPServer:
         # All should succeed
         assert len(results) == 3
         assert all(len(r) == 1 for r in results)
+
+    # ======================
+    # LABEL TOOL TESTS (8 tests)
+    # ======================
+
+    @pytest.mark.asyncio
+    async def test_list_labels_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test list_labels tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            json=[
+                {"id": 1, "name": "cleaning", "color": "#80d8ff"},
+                {"id": 2, "name": "urgent", "color": "#ff5733"},
+            ],
+        )
+
+        result = await call_tool("list_labels", {})
+
+        assert len(result) == 1
+        assert "Available Labels:" in result[0].text
+        assert "cleaning" in result[0].text
+        assert "urgent" in result[0].text
+        assert "#80d8ff" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_list_labels_empty(self, httpx_mock: HTTPXMock, mock_login):
+        """Test list_labels tool with no labels."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            json=[],
+        )
+
+        result = await call_tool("list_labels", {})
+
+        assert len(result) == 1
+        assert "No labels found" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_create_label_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test create_label tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            json={"id": 1, "name": "outdoor", "color": "#4caf50"},
+            method="POST",
+        )
+
+        result = await call_tool("create_label", {"name": "outdoor", "color": "#4caf50"})
+
+        assert len(result) == 1
+        assert "Successfully created label 'outdoor'" in result[0].text
+        assert "ID: 1" in result[0].text
+        assert "#4caf50" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_create_label_invalid_color(self, httpx_mock: HTTPXMock, mock_login):
+        """Test create_label tool with invalid color format."""
+        # API rejects with 422 validation error
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            status_code=422,
+            json={"error": "Invalid color format"},
+            method="POST",
+        )
+
+        result = await call_tool("create_label", {"name": "test", "color": "invalid"})
+
+        assert len(result) == 1
+        assert "Validation error" in result[0].text
+        assert "422" not in result[0].text  # Should be user-friendly, not show status code
+
+    @pytest.mark.asyncio
+    async def test_update_label_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test update_label tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels/1",
+            json={"id": 1, "name": "deep-cleaning", "color": "#00bcd4"},
+            method="PATCH",
+        )
+
+        result = await call_tool("update_label", {"label_id": 1, "name": "deep-cleaning", "color": "#00bcd4"})
+
+        assert len(result) == 1
+        assert "Successfully updated label ID 1" in result[0].text
+        assert "deep-cleaning" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_update_label_not_found(self, httpx_mock: HTTPXMock, mock_login):
+        """Test update_label tool with non-existent label."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels/999",
+            status_code=404,
+            method="PATCH",
+        )
+
+        result = await call_tool("update_label", {"label_id": 999, "name": "test"})
+
+        assert len(result) == 1
+        assert "Label not found" in result[0].text
+        assert "list_labels" in result[0].text  # Helpful hint
+
+    @pytest.mark.asyncio
+    async def test_delete_label_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test delete_label tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels/1",
+            json={},
+            method="DELETE",
+        )
+
+        result = await call_tool("delete_label", {"label_id": 1})
+
+        assert len(result) == 1
+        assert "Successfully deleted label with ID 1" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_delete_label_not_found(self, httpx_mock: HTTPXMock, mock_login):
+        """Test delete_label tool with non-existent label."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels/999",
+            status_code=404,
+            method="DELETE",
+        )
+
+        result = await call_tool("delete_label", {"label_id": 999})
+
+        assert len(result) == 1
+        assert "Label not found" in result[0].text
+
+    # ======================
+    # USER/MEMBER TOOL TESTS (6 tests)
+    # ======================
+
+    @pytest.mark.asyncio
+    async def test_get_circle_members_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test get_circle_members tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/circles/members/",
+            json=[
+                {
+                    "id": 1,
+                    "userId": 1,
+                    "circleId": 1,
+                    "role": "admin",
+                    "isActive": True,
+                    "username": "alice",
+                    "displayName": "Alice Smith",
+                    "points": 150,
+                    "pointsRedeemed": 50,
+                },
+                {
+                    "id": 2,
+                    "userId": 2,
+                    "circleId": 1,
+                    "role": "member",
+                    "isActive": True,
+                    "username": "bob",
+                    "displayName": "Bob Jones",
+                    "points": 80,
+                    "pointsRedeemed": 20,
+                },
+            ],
+        )
+
+        result = await call_tool("get_circle_members", {})
+
+        assert len(result) == 1
+        assert "Found 2 member(s)" in result[0].text
+        assert "alice" in result[0].text
+        assert "bob" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_get_circle_members_formatting(self, httpx_mock: HTTPXMock, mock_login):
+        """Test get_circle_members tool output formatting."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/circles/members/",
+            json=[
+                {
+                    "id": 1,
+                    "userId": 1,
+                    "circleId": 1,
+                    "role": "admin",
+                    "isActive": True,
+                    "username": "alice",
+                    "displayName": "Alice Admin",
+                    "points": 100,
+                    "pointsRedeemed": 25,
+                },
+            ],
+        )
+
+        result = await call_tool("get_circle_members", {})
+
+        assert len(result) == 1
+        response = result[0].text
+        # Check for formatted output elements
+        assert "User ID: 1" in response
+        assert "Display Name: Alice Admin" in response
+        assert "Role: admin" in response
+        assert "Points: 100" in response
+        assert "Redeemed: 25" in response
+        # Check for emojis indicating role and status
+        assert "👑" in response  # Admin role emoji
+        assert "✅" in response  # Active status emoji
+
+    @pytest.mark.asyncio
+    async def test_list_circle_users_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test list_circle_users tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/users",
+            json=[
+                {
+                    "id": 1,
+                    "username": "alice",
+                    "displayName": "Alice Smith",
+                    "email": "alice@example.com",
+                    "role": "admin",
+                    "points": 200,
+                    "pointsRedeemed": 50,
+                    "isActive": True,
+                },
+                {
+                    "id": 2,
+                    "username": "bob",
+                    "displayName": "Bob Jones",
+                    "email": "bob@example.com",
+                    "role": "member",
+                    "points": 100,
+                    "pointsRedeemed": 20,
+                    "isActive": True,
+                },
+            ],
+        )
+
+        result = await call_tool("list_circle_users", {})
+
+        assert len(result) == 1
+        assert "Found 2 user(s)" in result[0].text
+        assert "alice" in result[0].text
+        assert "bob@example.com" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_list_circle_users_empty(self, httpx_mock: HTTPXMock, mock_login):
+        """Test list_circle_users tool with no users."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/users",
+            json=[],
+        )
+
+        result = await call_tool("list_circle_users", {})
+
+        assert len(result) == 1
+        assert "Found 0 user(s)" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_get_user_profile_tool(self, httpx_mock: HTTPXMock, mock_login):
+        """Test get_user_profile tool execution."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/users/profile",
+            json={
+                "id": 1,
+                "username": "testuser",
+                "displayName": "Test User",
+                "email": "test@example.com",
+                "isActive": True,
+                "points": 250,
+                "pointsRedeemed": 75,
+                "storageUsed": 10485760,  # 10MB in bytes
+                "storageLimit": 104857600,  # 100MB in bytes
+                "webhook": "https://webhook.example.com",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-11-01T00:00:00Z",
+            },
+        )
+
+        result = await call_tool("get_user_profile", {})
+
+        assert len(result) == 1
+        assert "testuser" in result[0].text
+        assert "Test User" in result[0].text
+        assert "test@example.com" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_get_user_profile_formatting(self, httpx_mock: HTTPXMock, mock_login):
+        """Test get_user_profile tool output formatting."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/users/profile",
+            json={
+                "id": 1,
+                "username": "alice",
+                "displayName": "Alice Admin",
+                "email": "alice@example.com",
+                "isActive": True,
+                "points": 300,
+                "pointsRedeemed": 100,
+                "storageUsed": 52428800,  # 50MB
+                "storageLimit": 104857600,  # 100MB
+                "webhook": "https://webhook.example.com",
+                "createdAt": "2025-01-01T00:00:00Z",
+                "updatedAt": "2025-11-04T00:00:00Z",
+            },
+        )
+
+        result = await call_tool("get_user_profile", {})
+
+        assert len(result) == 1
+        response = result[0].text
+        # Check sections
+        assert "User Profile for alice" in response
+        assert "Basic Information:" in response
+        assert "Gamification:" in response
+        assert "Storage:" in response
+        assert "Notifications:" in response
+        # Check calculated values
+        assert "Net Points: 200" in response  # 300 - 100
+        assert "50.00 MB" in response  # Storage used
+        assert "50.00 MB" in response  # Available storage (100-50)
+        # Check emojis for better formatting
+        assert "👤" in response
+        assert "🏆" in response
+        assert "💾" in response
+        assert "🔔" in response
+
+    # ======================
+    # COMPLEX CHORE CREATION TESTS (5 tests)
+    # ======================
+
+    @pytest.mark.asyncio
+    async def test_create_chore_with_invalid_usernames(self, httpx_mock: HTTPXMock, mock_login):
+        """Test create_chore tool with non-existent usernames."""
+        # Mock get_circle_members to return available users
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/circles/members/",
+            json=[
+                {"id": 1, "userId": 1, "circleId": 1, "role": "member", "isActive": True, "username": "alice", "displayName": "Alice", "points": 0, "pointsRedeemed": 0},
+                {"id": 2, "userId": 2, "circleId": 1, "role": "member", "isActive": True, "username": "bob", "displayName": "Bob", "points": 0, "pointsRedeemed": 0},
+            ],
+        )
+
+        result = await call_tool(
+            "create_chore",
+            {
+                "name": "Test Chore",
+                "usernames": ["alice", "charlie"],  # charlie doesn't exist
+            }
+        )
+
+        assert len(result) == 1
+        assert "Could not find user(s)" in result[0].text
+        assert "charlie" in result[0].text
+        assert "get_circle_members" in result[0].text  # Helpful hint
+
+    @pytest.mark.asyncio
+    async def test_create_chore_with_invalid_labels(self, httpx_mock: HTTPXMock, mock_login):
+        """Test create_chore tool with non-existent labels."""
+        # Mock get_labels to return available labels
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            json=[
+                {"id": 1, "name": "cleaning"},
+                {"id": 2, "name": "urgent"},
+            ],
+        )
+
+        result = await call_tool(
+            "create_chore",
+            {
+                "name": "Test Chore",
+                "label_names": ["cleaning", "outdoor"],  # outdoor doesn't exist
+            }
+        )
+
+        assert len(result) == 1
+        assert "Label(s) not found" in result[0].text
+        assert "outdoor" in result[0].text
+        assert "list_labels" in result[0].text  # Helpful hint
+        assert "create_label" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_create_chore_all_assignstrategies(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+        """Test create_chore tool with all 7 assignment strategies."""
+        strategies = [
+            "least_completed",
+            "least_assigned",
+            "round_robin",
+            "random",
+            "keep_last_assigned",
+            "random_except_last_assigned",
+            "no_assignee"
+        ]
+
+        for strategy in strategies:
+            # Mock POST response
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+                json={"res": 1},
+                method="POST",
+            )
+            # Mock GET response
+            chore_response = sample_chore_data.copy()
+            chore_response["assignStrategy"] = strategy
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/1",
+                json=chore_response,
+                method="GET",
+            )
+
+            result = await call_tool(
+                "create_chore",
+                {
+                    "name": f"Test Chore {strategy}",
+                    "assign_strategy": strategy,
+                }
+            )
+
+            assert len(result) == 1
+            assert "Successfully created" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_create_chore_priority_validation(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+        """Test create_chore tool with priority 0-4 validation."""
+        # Valid priorities: 0, 1, 2, 3, 4
+        for priority in [0, 1, 2, 3, 4]:
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+                json={"res": 1},
+                method="POST",
+            )
+            chore_response = sample_chore_data.copy()
+            chore_response["priority"] = priority
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/1",
+                json=chore_response,
+                method="GET",
+            )
+
+            result = await call_tool(
+                "create_chore",
+                {
+                    "name": f"Priority {priority} Chore",
+                    "priority": priority,
+                }
+            )
+
+            assert len(result) == 1
+            assert "Successfully created" in result[0].text
+
+        # Invalid priority: 5 (should fail validation at Pydantic level)
+        result = await call_tool(
+            "create_chore",
+            {
+                "name": "Invalid Priority Chore",
+                "priority": 5,
+            }
+        )
+
+        assert len(result) == 1
+        assert "Validation Error" in result[0].text or "Error" in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_create_chore_frequency_transformation(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+        """Test create_chore tool frequency transformation from natural language to API format."""
+        # Test days_of_week transformation
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+            json={"res": 1},
+            method="POST",
+        )
+        chore_response = sample_chore_data.copy()
+        chore_response["frequencyType"] = "days_of_the_week"
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/1",
+            json=chore_response,
+            method="GET",
+        )
+
+        result = await call_tool(
+            "create_chore",
+            {
+                "name": "Weekday Chore",
+                "days_of_week": ["Mon", "Wed", "Fri"],
+                "time_of_day": "09:00",
+            }
+        )
+
+        assert len(result) == 1
+        assert "Successfully created" in result[0].text
+
+    # ======================
+    # COMPREHENSIVE ERROR HANDLING (6 tests)
+    # ======================
+
+    @pytest.mark.asyncio
+    async def test_http_401_authentication_error(self, httpx_mock: HTTPXMock, mock_login):
+        """Test handling of 401 authentication errors."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+            status_code=401,
+            json={"error": "Unauthorized"},
+        )
+
+        result = await call_tool("list_chores", {})
+
+        assert len(result) == 1
+        assert "Authentication failed" in result[0].text
+        assert "DONETICK_USERNAME" in result[0].text
+        assert "DONETICK_PASSWORD" in result[0].text
+        # Should not expose raw error details
+        assert "401" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_http_403_forbidden_error(self, httpx_mock: HTTPXMock, mock_login):
+        """Test handling of 403 forbidden errors."""
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/1/do",
+            status_code=403,
+            json={"error": "Forbidden"},
+            method="POST",
+        )
+
+        result = await call_tool("complete_chore", {"chore_id": 1})
+
+        assert len(result) == 1
+        assert "Permission denied" in result[0].text
+        assert "Premium" in result[0].text or "Plus" in result[0].text
+        # Should not expose status code
+        assert "403" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_http_404_not_found_formatting(self, httpx_mock: HTTPXMock, mock_login):
+        """Test user-friendly 404 error messages."""
+        # Test for chore not found
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/999",
+            status_code=404,
+        )
+
+        result = await call_tool("get_chore", {"chore_id": 999})
+
+        assert len(result) == 1
+        assert "not found" in result[0].text.lower()
+        # Should not expose status code
+        assert "404" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_http_422_validation_error(self, httpx_mock: HTTPXMock, mock_login, clear_cache):
+        """Test handling of 422 validation errors."""
+        # Pydantic validation will catch invalid dates before API call
+        # So test with a valid date format but API rejects it
+        httpx_mock.add_response(
+            url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+            status_code=422,
+            json={"error": "Validation error: invalid date"},
+            method="POST",
+        )
+
+        result = await call_tool(
+            "create_chore",
+            {
+                "name": "Test Chore",
+                "due_date": "2020-01-01",  # Valid format but API rejects
+            }
+        )
+
+        assert len(result) == 1
+        assert "Validation error" in result[0].text
+        # Should include helpful hints
+        assert "YYYY-MM-DD" in result[0].text or "RFC3339" in result[0].text or "date" in result[0].text.lower()
+
+    @pytest.mark.asyncio
+    async def test_http_429_rate_limit(self, httpx_mock: HTTPXMock, mock_login):
+        """Test handling of 429 rate limit errors."""
+        # Mock retries (client retries 429 with backoff)
+        for _ in range(3):
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+                status_code=429,
+                json={"error": "Too many requests"},
+            )
+
+        result = await call_tool("list_chores", {})
+
+        assert len(result) == 1
+        assert "Rate limit exceeded" in result[0].text
+        assert "Wait" in result[0].text or "retry" in result[0].text.lower()
+        # Should not expose status code
+        assert "429" not in result[0].text
+
+    @pytest.mark.asyncio
+    async def test_http_500_server_error(self, httpx_mock: HTTPXMock, mock_login):
+        """Test handling of 500 server errors."""
+        # Mock 3 retry attempts (client retries 500 errors)
+        for _ in range(3):
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+                status_code=500,
+                json={"error": "Internal server error"},
+            )
+
+        result = await call_tool("list_chores", {})
+
+        assert len(result) == 1
+        assert "Error" in result[0].text
+        # Should mention it's a server-side issue
+        assert "server" in result[0].text.lower() or "try again" in result[0].text.lower()
+        # Should not expose detailed error internals
+        assert "500" not in result[0].text
