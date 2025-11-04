@@ -13,6 +13,34 @@ This is a production-ready Model Context Protocol (MCP) server for Donetick chor
 - Pydantic for data validation
 - Docker for containerization
 
+## Project Structure
+
+The project follows a clean directory structure:
+
+```
+donetick-mcp-server/
+├── src/donetick_mcp/       # Source code
+│   ├── server.py           # MCP server implementation
+│   ├── client.py           # API client with rate limiting
+│   ├── models.py           # Pydantic data models
+│   └── config.py           # Configuration management
+├── tests/                  # Formal test suite (pytest)
+│   ├── test_client.py      # Unit tests for API client
+│   └── test_server.py      # Integration tests for MCP server
+├── tmp/                    # Temporary files (gitignored)
+│   └── *.py                # Ad-hoc testing, analysis, verification scripts
+├── .gitignore              # Excludes tmp/, venv/, build artifacts
+└── pyproject.toml          # Project dependencies and metadata
+```
+
+**Important Conventions**:
+- **Source code**: Always in `src/donetick_mcp/`
+- **Formal tests**: Always in `tests/` (run via pytest)
+- **Temporary files**: Always in `tmp/` for analysis, verification, one-off testing
+- **Never commit**: Files in `tmp/` are gitignored - use for local experimentation only
+
+When creating test scripts for verification or analysis, always place them in `tmp/` to keep the project root clean. The formal test suite in `tests/` should be reserved for permanent, repeatable tests that are part of CI/CD.
+
 ## Development Commands
 
 ### Setup & Installation

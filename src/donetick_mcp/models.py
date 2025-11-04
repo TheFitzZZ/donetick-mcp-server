@@ -322,7 +322,7 @@ class Chore(BaseModel):
     frequencyMetadata: Optional[dict[str, Any]] = Field(None, description="Frequency metadata")
     nextDueDate: Optional[str] = Field(None, description="Next due date (ISO 8601)")
     isRolling: bool = Field(default=False, description="Is rolling schedule")
-    assignedTo: int = Field(..., description="User ID of assigned user")
+    assignedTo: Optional[int] = Field(None, description="User ID of assigned user")
     assignees: list[Assignee] = Field(default_factory=list, description="List of assignees")
     assignStrategy: str = Field(
         default="least_completed",

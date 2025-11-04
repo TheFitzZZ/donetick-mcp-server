@@ -434,11 +434,14 @@ donetick-mcp-server/
 ├── tests/
 │   ├── test_client.py      # API client tests
 │   └── test_server.py      # MCP server tests
+├── tmp/                    # Temporary files (gitignored)
 ├── Dockerfile
 ├── docker-compose.yml
 ├── pyproject.toml
 └── README.md
 ```
+
+**Note**: The `tmp/` directory is used for temporary test scripts and analysis files during development. It's gitignored and not included in releases.
 
 ## API Documentation
 

@@ -568,3 +568,274 @@ class DonetickClient:
         await self._request("DELETE", f"/api/v1/labels/{label_id}")
         logger.info(f"Deleted label {label_id}")
         return True
+
+    # ==================== Transformation Helpers ====================
+
+    async def lookup_user_ids(self, usernames: list[str]) -> dict[str, int]:
+        """
+        Lookup user IDs from usernames.
+
+        Args:
+            usernames: List of usernames to lookup
+
+        Returns:
+            Dictionary mapping username to user ID
+        """
+        members = await self.get_circle_members()
+        username_map = {}
+
+        for member in members:
+            # Match by username or display name (case-insensitive)
+            member_username = member.username.lower()
+            member_display = (member.displayName or "").lower()
+
+            for requested_username in usernames:
+                requested_lower = requested_username.lower()
+                if requested_lower == member_username or requested_lower == member_display:
+                    username_map[requested_username] = member.userId
+                    break
+
+        return username_map
+
+    async def lookup_label_ids(self, label_names: list[str]) -> dict[str, int]:
+        """
+        Lookup label IDs from label names.
+
+        Args:
+            label_names: List of label names to lookup
+
+        Returns:
+            Dictionary mapping label name to label ID
+        """
+        labels = await self.get_labels()
+        label_map = {}
+
+        for label in labels:
+            # Match by name (case-insensitive)
+            label_name_lower = label.name.lower()
+
+            for requested_name in label_names:
+                if requested_name.lower() == label_name_lower:
+                    label_map[requested_name] = label.id
+                    break
+
+        return label_map
+
+    def transform_frequency_metadata(
+        self,
+        frequency_type: str,
+        days_of_week: list[str] | None = None,
+        time: str | None = None,
+        timezone: str = "America/New_York"
+    ) -> dict:
+        """
+        Transform simple frequency metadata to API format.
+
+        Args:
+            frequency_type: Type of frequency (once, daily, weekly, days_of_the_week, etc)
+            days_of_week: Day abbreviations like ["Mon", "Wed", "Fri"] or full names like ["monday", "wednesday"]
+            time: Time in HH:MM format (e.g., "16:00") or ISO format
+            timezone: Timezone name (default: America/New_York)
+
+        Returns:
+            API-compatible frequency metadata dictionary
+        """
+        from datetime import datetime
+        import pytz
+
+        metadata = {}
+
+        # Handle days of week
+        if days_of_week and frequency_type in ("days_of_the_week", "weekly"):
+            day_map = {
+                "mon": "monday", "monday": "monday",
+                "tue": "tuesday", "tuesday": "tuesday",
+                "wed": "wednesday", "wednesday": "wednesday",
+                "thu": "thursday", "thursday": "thursday",
+                "fri": "friday", "friday": "friday",
+                "sat": "saturday", "saturday": "saturday",
+                "sun": "sunday", "sunday": "sunday",
+            }
+
+            # Convert all day names to lowercase full names
+            normalized_days = []
+            for day in days_of_week:
+                day_lower = day.lower().strip()
+                if day_lower in day_map:
+                    normalized_days.append(day_map[day_lower])
+                else:
+                    logger.warning(f"Unknown day abbreviation: {day}")
+
+            if normalized_days:
+                metadata["days"] = normalized_days
+                metadata["unit"] = "days"
+                metadata["timezone"] = timezone
+                metadata["weekPattern"] = "every_week"
+
+        # Handle time
+        if time:
+            # Check if already in ISO format
+            if "T" in time or ":" in time and len(time) <= 5:
+                # Simple HH:MM format - convert to RFC3339
+                if ":" in time and len(time) <= 5:
+                    time_parts = time.split(":")
+                    hour = int(time_parts[0])
+                    minute = int(time_parts[1]) if len(time_parts) > 1 else 0
+
+                    # Create datetime in specified timezone
+                    tz = pytz.timezone(timezone)
+                    now = datetime.now(tz)
+                    dt = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+
+                    # Format as RFC3339
+                    metadata["time"] = dt.isoformat()
+                else:
+                    # Already in ISO format
+                    metadata["time"] = time
+
+        return metadata
+
+    def transform_notification_metadata(
+        self,
+        offset_minutes: int | None = None,
+        remind_at_due_time: bool = False,
+        nagging: bool = False,
+        predue: bool = False
+    ) -> dict:
+        """
+        Transform simple notification settings to API format with all three notification mechanisms.
+
+        Args:
+            offset_minutes: Minutes before (negative) or after (positive) due time
+            remind_at_due_time: Whether to remind at exact due time
+            nagging: Enable nagging notifications (repeated reminders)
+            predue: Enable pre-due notifications (reminders before due date)
+
+        Returns:
+            API-compatible notification metadata with nagging, predue, and templates fields
+        """
+        metadata = {
+            "nagging": nagging,
+            "predue": predue
+        }
+
+        templates = []
+
+        if offset_minutes is not None and offset_minutes != 0:
+            templates.append({
+                "value": offset_minutes,
+                "unit": "m"
+            })
+
+        if remind_at_due_time:
+            templates.append({
+                "value": 0,
+                "unit": "m"
+            })
+
+        if templates:
+            metadata["templates"] = templates
+
+        return metadata
+
+    def transform_subtasks(self, subtask_names: list[str]) -> list[dict]:
+        """
+        Transform simple subtask names to API format.
+
+        Args:
+            subtask_names: List of subtask names
+
+        Returns:
+            API-compatible subtasks with orderId, completedAt, etc.
+        """
+        if not subtask_names:
+            return []
+
+        return [
+            {
+                "orderId": i,
+                "name": task,
+                "completedAt": None,
+                "completedBy": 0,
+                "parentId": None
+            }
+            for i, task in enumerate(subtask_names)
+        ]
+
+    def calculate_due_date(
+        self,
+        frequency_type: str,
+        frequency_metadata: dict,
+        timezone: str = "America/New_York"
+    ) -> str:
+        """
+        Calculate initial due date based on frequency type and metadata.
+
+        Args:
+            frequency_type: Type of frequency
+            frequency_metadata: Frequency metadata (with days, time, etc.)
+            timezone: Timezone name
+
+        Returns:
+            Due date in RFC3339 format
+        """
+        from datetime import datetime, timedelta
+        import pytz
+
+        tz = pytz.timezone(timezone)
+        now = datetime.now(tz)
+
+        if frequency_type == "once":
+            # One-time chores - tomorrow at specified time or noon
+            due = now + timedelta(days=1)
+            due = due.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        elif frequency_type == "days_of_the_week" and "days" in frequency_metadata:
+            # Find next occurrence of first day in list
+            day_map = {
+                "monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+                "friday": 4, "saturday": 5, "sunday": 6
+            }
+
+            first_day = frequency_metadata["days"][0]
+            target_weekday = day_map.get(first_day, 0)
+
+            # Parse time from metadata
+            time_str = frequency_metadata.get("time", "")
+            if time_str and "T" in time_str:
+                time_dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                target_hour = time_dt.hour
+                target_minute = time_dt.minute
+            else:
+                target_hour = 12
+                target_minute = 0
+
+            # Calculate days ahead
+            current_weekday = now.weekday()
+            days_ahead = (target_weekday - current_weekday) % 7
+
+            if days_ahead == 0:
+                target_time = now.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+                if now >= target_time:
+                    days_ahead = 7
+
+            due = now + timedelta(days=days_ahead)
+            due = due.replace(hour=target_hour, minute=target_minute, second=0, microsecond=0)
+
+        elif frequency_type == "daily":
+            # Tomorrow at specified time
+            due = now + timedelta(days=1)
+            time_str = frequency_metadata.get("time", "")
+            if time_str and "T" in time_str:
+                time_dt = datetime.fromisoformat(time_str.replace('Z', '+00:00'))
+                due = due.replace(hour=time_dt.hour, minute=time_dt.minute, second=0, microsecond=0)
+            else:
+                due = due.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        else:
+            # Default to tomorrow at noon
+            due = now + timedelta(days=1)
+            due = due.replace(hour=12, minute=0, second=0, microsecond=0)
+
+        # Convert to UTC and format as RFC3339
+        return due.astimezone(pytz.UTC).isoformat().replace('+00:00', 'Z')

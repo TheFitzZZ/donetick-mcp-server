@@ -81,10 +81,26 @@ async def list_tools() -> list[Tool]:
         Tool(
             name="create_chore",
             description=(
-                "Create a new chore in Donetick with full configuration support. "
-                "Supports recurrence/frequency, user assignment, notifications, "
-                "labels, priority, points, sub-tasks, and more. "
-                "Returns the created chore with its assigned ID and metadata."
+                "Create a new chore in Donetick with easy natural language inputs. "
+                "Use simple parameters like usernames, days_of_week, and time_of_day - "
+                "they're automatically transformed to the correct API format.\n\n"
+                "EXAMPLES:\n"
+                "1. Simple recurring chore:\n"
+                "   {name: 'Take out trash', days_of_week: ['Mon', 'Thu'], "
+                "time_of_day: '19:00', usernames: ['Alice']}\n\n"
+                "2. Weekly chore with reminders:\n"
+                "   {name: 'Team meeting', days_of_week: ['Tue'], time_of_day: '14:00', "
+                "remind_minutes_before: 15, usernames: ['Alice', 'Bob']}\n\n"
+                "3. With subtasks and labels:\n"
+                "   {name: 'Weekly review', days_of_week: ['Fri'], time_of_day: '17:00', "
+                "subtask_names: ['Check email', 'Update notes'], label_names: ['work', 'weekly']}\n\n"
+                "4. Daily chore with points:\n"
+                "   {name: 'Exercise', frequency_type: 'daily', time_of_day: '07:00', "
+                "points: 10, usernames: ['Bob']}\n\n"
+                "5. One-time chore:\n"
+                "   {name: 'Fix leaky faucet', due_date: '2025-11-10', "
+                "priority: 5, usernames: ['Alice']}\n\n"
+                "Returns the created chore with its assigned ID and all metadata."
             ),
             inputSchema={
                 "type": "object",
@@ -110,8 +126,37 @@ async def list_tools() -> list[Tool]:
                     # Recurrence/Frequency
                     "frequency_type": {
                         "type": "string",
-                        "enum": ["once", "daily", "weekly", "monthly", "yearly", "interval_based"],
-                        "description": "How often the chore repeats (default: once)",
+                        "enum": [
+                            "once",           # One-time chore
+                            "daily",          # Every day
+                            "weekly",         # Every week
+                            "monthly",        # Every month
+                            "yearly",         # Every year
+                            "interval_based", # Custom interval
+                            "interval",       # Alias for interval_based
+                            "days_of_the_week", # Specific days (Mon, Wed, Fri)
+                            "day_of_the_month", # Specific day of month (e.g., 15th)
+                            "adaptive",       # Smart scheduling based on completion patterns
+                            "trigger",        # Triggered by events
+                            "no_repeat"       # Alias for once
+                        ],
+                        "description": (
+                            "How often the chore repeats (default: once).\n\n"
+                            "FREQUENCY TYPES:\n"
+                            "• once / no_repeat: One-time chore, no recurrence\n"
+                            "• daily: Repeats every day at specified time\n"
+                            "• weekly: Repeats every week (use with frequency for bi-weekly: frequency=2)\n"
+                            "• days_of_the_week: Specific days (Mon, Wed, Fri) - BEST for multiple days/week\n"
+                            "  → Use with days_of_week parameter: ['Mon', 'Wed', 'Fri']\n"
+                            "• monthly: Repeats every month\n"
+                            "• yearly: Repeats every year\n"
+                            "• day_of_the_month: Specific day of month (e.g., 15th of each month)\n"
+                            "• interval_based / interval: Custom interval (e.g., every N days)\n"
+                            "• adaptive: Smart scheduling based on completion patterns\n"
+                            "• trigger: Triggered by events or conditions\n\n"
+                            "TIP: For chores on specific days (Mon/Wed/Fri), use frequency_type='days_of_the_week' "
+                            "with days_of_week=['Mon', 'Wed', 'Fri'] instead of frequency_type='weekly'"
+                        ),
                     },
                     "frequency": {
                         "type": "integer",
@@ -192,6 +237,54 @@ async def list_tools() -> list[Tool]:
                         "type": "array",
                         "items": {"type": "object"},
                         "description": "Sub-tasks/checklist items (optional)",
+                    },
+
+                    # === NATURAL LANGUAGE INPUTS (Simplified) ===
+                    # These are automatically transformed to the API format
+
+                    "usernames": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "EASY: Assign by usernames instead of IDs (e.g., ['Alice', 'Bob']). First user becomes primary assignee.",
+                    },
+                    "label_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "EASY: Label by names instead of IDs (e.g., ['cleaning', 'urgent'])",
+                    },
+                    "days_of_week": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "EASY: Days as short names (e.g., ['Mon', 'Wed', 'Fri'] or ['monday', 'wednesday']). Auto-sets frequency_type to days_of_the_week.",
+                    },
+                    "time_of_day": {
+                        "type": "string",
+                        "description": "EASY: Time in HH:MM format (e.g., '16:00' for 4pm)",
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "Timezone name (default: America/New_York). Used with days_of_week and time_of_day.",
+                    },
+                    "remind_minutes_before": {
+                        "type": "integer",
+                        "description": "EASY: Remind X minutes before due time (e.g., 15 for 15 minutes before)",
+                    },
+                    "remind_at_due_time": {
+                        "type": "boolean",
+                        "description": "EASY: Also remind exactly at due time (default: false)",
+                    },
+                    "enable_nagging": {
+                        "type": "boolean",
+                        "description": "EASY: Enable nagging notifications - repeated reminders if not completed (default: false)",
+                    },
+                    "enable_predue": {
+                        "type": "boolean",
+                        "description": "EASY: Enable pre-due notifications - reminders before due date arrives (default: false)",
+                    },
+                    "subtask_names": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "EASY: Subtask names as simple strings (e.g., ['Do homework', 'Check work'])",
                     },
                 },
                 "required": ["name"],
@@ -372,39 +465,115 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             return [TextContent(type="text", text=json.dumps(chore.model_dump(), indent=2))]
 
         elif name == "create_chore":
-            # Build notification metadata
-            notification_metadata = {
-                "nagging": arguments.get("nagging", False),
-                "predue": arguments.get("predue", False),
-            }
+            # ===== Handle User Assignment =====
+            assigned_to = arguments.get("assigned_to")
+            assignees = arguments.get("assignees", [])
+            usernames = arguments.get("usernames", [])
 
-            # Build chore create request with all parameters
+            # If usernames provided, lookup IDs
+            if usernames:
+                username_map = await client.lookup_user_ids(usernames)
+                if username_map:
+                    # Use first username as primary assignee
+                    assigned_to = username_map.get(usernames[0])
+                    # Build assignees list
+                    assignees = [{"userId": uid} for uid in username_map.values()]
+                else:
+                    logger.warning(f"Could not find user IDs for usernames: {usernames}")
+
+            # ===== Handle Labels =====
+            labels_v2 = arguments.get("labels_v2", [])
+            label_names = arguments.get("label_names", [])
+
+            # If label names provided, lookup IDs
+            if label_names:
+                label_map = await client.lookup_label_ids(label_names)
+                if label_map:
+                    labels_v2 = [{"id": label_id} for label_id in label_map.values()]
+                else:
+                    logger.warning(f"Could not find label IDs for names: {label_names}")
+
+            # ===== Handle Frequency Metadata =====
+            frequency_type = arguments.get("frequency_type", "once")
+            frequency_metadata = arguments.get("frequency_metadata", {})
+            days_of_week = arguments.get("days_of_week", [])
+            time_of_day = arguments.get("time_of_day")
+            timezone = arguments.get("timezone", "America/New_York")
+
+            # If simple day/time inputs provided, transform to API format
+            if days_of_week or time_of_day:
+                frequency_metadata = client.transform_frequency_metadata(
+                    frequency_type=frequency_type,
+                    days_of_week=days_of_week,
+                    time=time_of_day,
+                    timezone=timezone
+                )
+                # Auto-set frequency type if days are specified
+                if days_of_week and frequency_type == "once":
+                    frequency_type = "days_of_the_week"
+
+            # ===== Handle Notification Metadata =====
+            notification_metadata = arguments.get("notification_metadata", {})
+            remind_minutes_before = arguments.get("remind_minutes_before")
+            remind_at_due_time = arguments.get("remind_at_due_time", False)
+            enable_nagging = arguments.get("enable_nagging", False)
+            enable_predue = arguments.get("enable_predue", False)
+
+            # If any notification inputs provided, transform to API format
+            if remind_minutes_before is not None or remind_at_due_time or enable_nagging or enable_predue:
+                offset_minutes = -abs(remind_minutes_before) if remind_minutes_before else None
+                notification_metadata = client.transform_notification_metadata(
+                    offset_minutes=offset_minutes,
+                    remind_at_due_time=remind_at_due_time,
+                    nagging=enable_nagging,
+                    predue=enable_predue
+                )
+
+            # ===== Handle Subtasks =====
+            sub_tasks = arguments.get("sub_tasks", [])
+            subtask_names = arguments.get("subtask_names", [])
+
+            # If simple subtask names provided, transform to API format
+            if subtask_names:
+                sub_tasks = client.transform_subtasks(subtask_names)
+
+            # ===== Calculate Due Date =====
+            due_date = arguments.get("due_date")
+            if not due_date and frequency_type != "once":
+                # Auto-calculate initial due date based on frequency
+                due_date = client.calculate_due_date(
+                    frequency_type=frequency_type,
+                    frequency_metadata=frequency_metadata,
+                    timezone=timezone
+                )
+
+            # ===== Build ChoreCreate Object =====
             chore_create = ChoreCreate(
                 # Basic Information
                 Name=arguments["name"],
                 Description=arguments.get("description"),
-                DueDate=arguments.get("due_date"),
+                DueDate=due_date,
                 CreatedBy=arguments.get("created_by"),
 
                 # Recurrence/Frequency
-                FrequencyType=arguments.get("frequency_type", "once"),
+                FrequencyType=frequency_type,
                 Frequency=arguments.get("frequency", 1),
-                FrequencyMetadata=arguments.get("frequency_metadata", {}),
+                FrequencyMetadata=frequency_metadata,
                 IsRolling=arguments.get("is_rolling", False),
 
                 # User Assignment
-                AssignedTo=arguments.get("assigned_to"),
-                Assignees=arguments.get("assignees", []),
+                AssignedTo=assigned_to,
+                Assignees=assignees,
                 AssignStrategy=arguments.get("assign_strategy", "least_completed"),
 
                 # Notifications
-                Notification=arguments.get("notification", False),
+                Notification=arguments.get("notification", bool(notification_metadata)),
                 NotificationMetadata=notification_metadata,
 
                 # Organization & Priority
                 Priority=arguments.get("priority"),
                 Labels=arguments.get("labels", []),
-                LabelsV2=arguments.get("labels_v2", []),
+                LabelsV2=labels_v2,
 
                 # Status & Visibility
                 IsActive=arguments.get("is_active", True),
@@ -414,8 +583,15 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 Points=arguments.get("points"),
 
                 # Advanced Features
-                SubTasks=arguments.get("sub_tasks", []),
+                SubTasks=sub_tasks,
                 ThingChore=arguments.get("thing_chore"),
+
+                # Completion Settings
+                CompletionWindow=arguments.get("completion_window"),
+                RequireApproval=arguments.get("require_approval", False),
+
+                # Advanced Scheduling
+                DeadlineOffset=arguments.get("deadline_offset"),
             )
 
             chore = await client.create_chore(chore_create)

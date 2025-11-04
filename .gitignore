@@ -39,6 +39,9 @@ ENV/
 .env
 .env.local
 
+# Internal Test Configuration
+.test_config
+
 # Testing
 .pytest_cache/
 .coverage
@@ -54,3 +57,6 @@ docker-compose.override.yml
 
 # MCP
 *.mcp.json
+
+# Temporary files for testing and analysis
+tmp/
