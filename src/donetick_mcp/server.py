@@ -184,8 +184,16 @@ async def list_tools() -> list[Tool]:
                     },
                     "assign_strategy": {
                         "type": "string",
-                        "enum": ["least_completed", "round_robin", "random"],
-                        "description": "Assignment strategy (default: least_completed)",
+                        "enum": [
+                            "least_completed",
+                            "least_assigned",
+                            "round_robin",
+                            "random",
+                            "keep_last_assigned",
+                            "random_except_last_assigned",
+                            "no_assignee"
+                        ],
+                        "description": "Assignment strategy: least_completed, least_assigned, round_robin, random, keep_last_assigned, random_except_last_assigned, no_assignee (default: least_completed)",
                     },
 
                     # Notifications
@@ -205,9 +213,9 @@ async def list_tools() -> list[Tool]:
                     # Organization
                     "priority": {
                         "type": "integer",
-                        "minimum": 1,
-                        "maximum": 5,
-                        "description": "Priority level: 1=lowest, 5=highest (optional)",
+                        "minimum": 0,
+                        "maximum": 4,
+                        "description": "Priority level: 0=unset, 1=lowest, 2=low, 3=medium, 4=highest (optional)",
                     },
                     "labels": {
                         "type": "array",
@@ -255,7 +263,12 @@ async def list_tools() -> list[Tool]:
                     "days_of_week": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "EASY: Days as short names (e.g., ['Mon', 'Wed', 'Fri'] or ['monday', 'wednesday']). Auto-sets frequency_type to days_of_the_week.",
+                        "description": (
+                            "EASY: Days as short names (e.g., ['Mon', 'Wed', 'Fri'] or ['monday', 'wednesday']). "
+                            "Auto-sets frequency_type to days_of_the_week.\n\n"
+                            "REQUIRED when frequency_type='days_of_the_week'.\n"
+                            "Valid values: Mon/Monday, Tue/Tuesday, Wed/Wednesday, Thu/Thursday, Fri/Friday, Sat/Saturday, Sun/Sunday"
+                        ),
                     },
                     "time_of_day": {
                         "type": "string",
@@ -499,13 +512,26 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             # If usernames provided, lookup IDs
             if usernames:
                 username_map = await client.lookup_user_ids(usernames)
-                if username_map:
-                    # Use first username as primary assignee
-                    assigned_to = username_map.get(usernames[0])
-                    # Build assignees list
-                    assignees = [{"userId": uid} for uid in username_map.values()]
-                else:
-                    logger.warning(f"Could not find user IDs for usernames: {usernames}")
+
+                # Check if all usernames were found
+                if not username_map or len(username_map) != len(usernames):
+                    # Find which usernames were not found
+                    missing = [u for u in usernames if u not in (username_map or {})]
+                    return [
+                        TextContent(
+                            type="text",
+                            text=(
+                                f"Error: Could not find user(s) in circle: {', '.join(missing)}\n\n"
+                                "💡 Hint: Use get_circle_members to see available users.\n"
+                                "   Valid users must be members of your circle/household."
+                            )
+                        )
+                    ]
+
+                # Use first username as primary assignee
+                assigned_to = username_map.get(usernames[0])
+                # Build assignees list
+                assignees = [{"userId": uid} for uid in username_map.values()]
 
             # ===== Handle Labels =====
             labels_v2 = arguments.get("labels_v2", [])
@@ -514,10 +540,23 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             # If label names provided, lookup IDs
             if label_names:
                 label_map = await client.lookup_label_ids(label_names)
-                if label_map:
-                    labels_v2 = [{"id": label_id} for label_id in label_map.values()]
-                else:
-                    logger.warning(f"Could not find label IDs for names: {label_names}")
+
+                # Check if all labels were found
+                missing_labels = [name for name in label_names if name not in (label_map or {})]
+
+                if missing_labels:
+                    return [
+                        TextContent(
+                            type="text",
+                            text=(
+                                f"Error: Label(s) not found: {', '.join(missing_labels)}\n\n"
+                                "💡 Hint: Use list_labels to see available labels.\n"
+                                "   You can create missing labels with create_label tool."
+                            )
+                        )
+                    ]
+
+                labels_v2 = [{"id": label_id} for label_id in label_map.values()]
 
             # ===== Handle Frequency Metadata =====
             frequency_type = arguments.get("frequency_type", "once")
@@ -525,6 +564,22 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             days_of_week = arguments.get("days_of_week", [])
             time_of_day = arguments.get("time_of_day")
             timezone = arguments.get("timezone", "America/New_York")
+
+            # Validate days_of_week is provided for days_of_the_week frequency type
+            if frequency_type == "days_of_the_week" and not days_of_week:
+                return [
+                    TextContent(
+                        type="text",
+                        text=(
+                            "Error: days_of_week parameter is required when frequency_type='days_of_the_week'.\n\n"
+                            "Please provide which days the chore should repeat on, for example:\n"
+                            "  days_of_week: ['Mon', 'Wed', 'Fri']\n"
+                            "  days_of_week: ['Monday', 'Tuesday', 'Thursday']\n\n"
+                            "Valid day values: Mon/Monday, Tue/Tuesday, Wed/Wednesday, Thu/Thursday, "
+                            "Fri/Friday, Sat/Saturday, Sun/Sunday"
+                        ),
+                    )
+                ]
 
             # If simple day/time inputs provided, transform to API format
             if days_of_week or time_of_day:

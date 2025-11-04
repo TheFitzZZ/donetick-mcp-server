@@ -633,8 +633,7 @@ class DonetickClient:
         """
         logger.debug("Listing all circle users")
 
-        response = await self._request("GET", "/api/v1/users/")
-        users_data = response.json()
+        users_data = await self._request("GET", "/api/v1/users/")
 
         # Handle both array and object response formats
         if isinstance(users_data, dict):
@@ -656,8 +655,7 @@ class DonetickClient:
         """
         logger.debug("Getting current user profile")
 
-        response = await self._request("GET", "/api/v1/users/profile")
-        profile_data = response.json()
+        profile_data = await self._request("GET", "/api/v1/users/profile")
 
         # Handle both direct object and wrapped response
         if isinstance(profile_data, dict) and "res" in profile_data:
@@ -685,9 +683,19 @@ class DonetickClient:
 
         Returns:
             API-compatible frequency metadata dictionary
+
+        Raises:
+            ValueError: If frequency_type is 'days_of_the_week' but days_of_week is not provided
         """
         from datetime import datetime
         import pytz
+
+        # Validate required parameters for days_of_the_week
+        if frequency_type == "days_of_the_week" and (not days_of_week or len(days_of_week) == 0):
+            raise ValueError(
+                "days_of_week parameter is required when frequency_type='days_of_the_week'. "
+                "Please provide a list of days like ['Mon', 'Wed', 'Fri'] or ['monday', 'wednesday', 'friday']"
+            )
 
         metadata = {}
 
@@ -705,18 +713,33 @@ class DonetickClient:
 
             # Convert all day names to lowercase full names
             normalized_days = []
+            invalid_days = []
             for day in days_of_week:
                 day_lower = day.lower().strip()
                 if day_lower in day_map:
                     normalized_days.append(day_map[day_lower])
                 else:
-                    logger.warning(f"Unknown day abbreviation: {day}")
+                    invalid_days.append(day)
 
-            if normalized_days:
-                metadata["days"] = normalized_days
-                metadata["unit"] = "days"
-                metadata["timezone"] = timezone
-                metadata["weekPattern"] = "every_week"
+            # Fail if any invalid day names were provided
+            if invalid_days:
+                raise ValueError(
+                    f'Invalid day name(s): {", ".join(invalid_days)}. '
+                    'Valid values: Mon/Monday, Tue/Tuesday, Wed/Wednesday, Thu/Thursday, '
+                    'Fri/Friday, Sat/Saturday, Sun/Sunday'
+                )
+
+            # Fail if no valid days after normalization
+            if not normalized_days:
+                raise ValueError(
+                    'No valid days provided in days_of_week parameter. '
+                    'At least one day is required for frequency_type="days_of_the_week"'
+                )
+
+            metadata["days"] = normalized_days
+            metadata["unit"] = "days"
+            metadata["timezone"] = timezone
+            metadata["weekPattern"] = "every_week"
 
         # Handle time
         if time:

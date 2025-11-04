@@ -192,7 +192,8 @@ class ChoreCreate(BaseModel):
     completionWindow: Optional[int] = Field(
         None,
         alias="CompletionWindow",
-        description="Days before/after due date for completion window"
+        ge=0,
+        description="SECONDS before due time when chore can be completed early (e.g., 3600=1hr, 86400=1day)"
     )
     requireApproval: Optional[bool] = Field(
         default=False,
@@ -204,7 +205,7 @@ class ChoreCreate(BaseModel):
     deadlineOffset: Optional[int] = Field(
         None,
         alias="DeadlineOffset",
-        description="Offset in days for deadline calculation"
+        description="SECONDS after due time when deadline is reached (e.g., 3600=1hr grace, 86400=1day)"
     )
 
     @field_validator('name')
@@ -283,12 +284,121 @@ class ChoreCreate(BaseModel):
         """Validate assignment strategy."""
         if v is None:
             return "least_completed"
-        valid_strategies = ["least_completed", "round_robin", "random"]
+        valid_strategies = [
+            "least_completed",
+            "least_assigned",
+            "round_robin",
+            "random",
+            "keep_last_assigned",
+            "random_except_last_assigned",
+            "no_assignee"
+        ]
         if v.lower() not in valid_strategies:
             raise ValueError(
                 f'assignStrategy must be one of: {", ".join(valid_strategies)}'
             )
         return v.lower()
+
+    @field_validator('notificationMetadata')
+    @classmethod
+    def validate_notification_metadata(cls, v: Optional[dict]) -> Optional[dict]:
+        """Validate notification metadata structure and template limit."""
+        if v is None:
+            return None
+
+        # Check template limit (Donetick API enforces MAX_TEMPLATES=5)
+        templates = v.get('templates', [])
+        if len(templates) > 5:
+            raise ValueError(
+                f'notificationMetadata.templates cannot exceed 5 items (got {len(templates)}). '
+                'The Donetick API enforces a maximum of 5 notification templates per chore.'
+            )
+
+        # Validate template structure
+        for i, template in enumerate(templates):
+            if not isinstance(template, dict):
+                raise ValueError(
+                    f'Template {i} must be an object with "value" and "unit" fields'
+                )
+            if 'value' not in template or 'unit' not in template:
+                raise ValueError(
+                    f'Template {i} missing required fields: value (int), unit (str)'
+                )
+            if template['unit'] not in ('m', 'h', 'd'):
+                raise ValueError(
+                    f'Template {i} has invalid unit "{template["unit"]}". '
+                    'Valid units: "m" (minutes), "h" (hours), "d" (days)'
+                )
+
+        return v
+
+    @field_validator('completionWindow')
+    @classmethod
+    def validate_completion_window(cls, v: Optional[int]) -> Optional[int]:
+        """Validate completion window is reasonable."""
+        if v is not None and v < 0:
+            raise ValueError('completionWindow must be non-negative (in seconds)')
+        if v is not None and v > 31536000:  # 1 year in seconds
+            raise ValueError('completionWindow cannot exceed 1 year (31536000 seconds)')
+        return v
+
+    @field_validator('deadlineOffset')
+    @classmethod
+    def validate_deadline_offset(cls, v: Optional[int]) -> Optional[int]:
+        """Validate deadline offset is reasonable."""
+        if v is not None and v > 31536000:  # 1 year in seconds
+            raise ValueError('deadlineOffset cannot exceed 1 year (31536000 seconds)')
+        return v
+
+    @field_validator('frequencyMetadata')
+    @classmethod
+    def validate_frequency_metadata(cls, v: Optional[dict]) -> Optional[dict]:
+        """Validate frequency metadata structure."""
+        if not v:
+            return v
+
+        # Validate days are lowercase full names
+        if 'days' in v:
+            if not isinstance(v['days'], list):
+                raise ValueError('frequencyMetadata.days must be an array')
+            valid_days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
+            for day in v['days']:
+                if not isinstance(day, str) or day.lower() not in valid_days:
+                    raise ValueError(
+                        f'Invalid day "{day}" in frequencyMetadata.days. '
+                        f'Must be lowercase full names: {", ".join(valid_days)}'
+                    )
+
+        # Validate weekPattern
+        if 'weekPattern' in v:
+            valid_patterns = ['every_week', 'week_of_month', 'week_of_quarter']
+            if v['weekPattern'] not in valid_patterns:
+                raise ValueError(
+                    f'Invalid weekPattern "{v["weekPattern"]}". '
+                    f'Valid values: {", ".join(valid_patterns)}'
+                )
+
+        # Validate time format (should be ISO with timezone)
+        if 'time' in v and v['time']:
+            time_str = v['time']
+            if 'T' not in time_str:
+                raise ValueError(
+                    f'frequencyMetadata.time must be ISO format with timezone '
+                    f'(e.g., "2025-11-10T14:00:00-05:00"), got: "{time_str}"'
+                )
+
+        # Validate timezone is IANA format
+        if 'timezone' in v and v['timezone']:
+            try:
+                import pytz
+                pytz.timezone(v['timezone'])
+            except Exception:
+                raise ValueError(
+                    f'Invalid timezone "{v["timezone"]}". '
+                    'Use IANA timezone names like "America/New_York", "Europe/London", "UTC"'
+                )
+
+        return v
 
 
 class ChoreUpdate(BaseModel):
