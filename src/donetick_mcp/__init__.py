@@ -1,3 +1,3 @@
 """Donetick MCP Server - Model Context Protocol server for Donetick chores management."""
 
-__version__ = "0.2.4"
+__version__ = "0.2.5"

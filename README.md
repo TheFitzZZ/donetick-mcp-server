@@ -21,7 +21,7 @@ See the [Migration Guide](MIGRATION.md) for detailed instructions.
 
 ## Features
 
-- **5 Core Tools**: List, get, create, complete, and delete chores
+- **10 MCP Tools**: Complete chore management (list, get, create, complete, delete), label organization (list, create, update, delete), and circle member information
 - **Full Chore Configuration**: All 26+ fields now working including frequency metadata, rolling schedules, multiple assignees, assignment strategies, notifications, labels, priority, points, sub-tasks, and more
 - **JWT Authentication**: Automatic token management with transparent refresh
 - **Smart Caching**: Intelligent caching for get_chore operations (60s TTL by default)
@@ -349,6 +349,27 @@ Delete a chore permanently. **Only the creator can delete**.
 **Example**:
 ```
 Delete chore 123
+```
+
+### 6. get_circle_members
+
+Get all members in your circle (household/team). Shows who you can assign chores to.
+
+**Parameters**: None
+
+**Returns**:
+- User ID
+- Username
+- Display name
+- Role (admin/member)
+- Active status
+- Points and redeemed points
+
+**Example**:
+```
+Show me who's in my household
+Who can I assign chores to?
+List all circle members
 ```
 
 ## Configuration

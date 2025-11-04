@@ -315,6 +315,19 @@ async def list_tools() -> list[Tool]:
                 "required": ["label_id"],
             },
         ),
+        Tool(
+            name="get_circle_members",
+            description=(
+                "Get all members in the circle (household/team). "
+                "Returns user information including user IDs, usernames, display names, "
+                "roles (admin/member), active status, and points. "
+                "Use this to see who you can assign chores to."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 
@@ -497,6 +510,37 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 TextContent(
                     type="text",
                     text=f"Successfully deleted label with ID {label_id}.",
+                )
+            ]
+
+        elif name == "get_circle_members":
+            members = await client.get_circle_members()
+
+            # Format member information
+            member_list = []
+            for member in members:
+                role_emoji = "👑" if member.role == "admin" else "👤"
+                status_emoji = "✅" if member.isActive else "❌"
+                display_name = member.displayName or "(no display name)"
+
+                member_info = (
+                    f"{role_emoji} {status_emoji} {member.username}\n"
+                    f"  User ID: {member.userId}\n"
+                    f"  Display Name: {display_name}\n"
+                    f"  Role: {member.role}\n"
+                    f"  Points: {member.points} (Redeemed: {member.pointsRedeemed})"
+                )
+                member_list.append(member_info)
+
+            result_text = (
+                f"Found {len(members)} member(s) in your circle:\n\n" +
+                "\n\n".join(member_list)
+            )
+
+            return [
+                TextContent(
+                    type="text",
+                    text=result_text,
                 )
             ]
 
