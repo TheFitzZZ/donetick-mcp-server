@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "donetick-mcp-server"
-version = "0.1.0"
-description = "MCP server for Donetick chores management API"
+version = "0.2.4"
+description = "MCP server for Donetick chores management API with JWT authentication and Full API support"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -39,7 +39,7 @@ dev = [
 ]
 
 [project.scripts]
-donetick-mcp = "donetick_mcp.server:main"
+donetick-mcp-server = "donetick_mcp.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

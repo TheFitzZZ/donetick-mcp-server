@@ -2,30 +2,93 @@
 
 A production-ready Model Context Protocol (MCP) server for [Donetick](https://donetick.com) chores management. Enables Claude and other MCP-compatible AI assistants to interact with your Donetick instance through a secure, rate-limited API.
 
+## Breaking Changes in v2.0.0
+
+**Important**: Version 2.0.0 introduces breaking changes to authentication. If you're upgrading from v1.x, please read the [Migration Guide](MIGRATION.md).
+
+**What Changed**:
+- Authentication now uses JWT with username/password (instead of API tokens)
+- API endpoints switched from eAPI to Full API
+- 9 previously non-functional features now work (frequency metadata, rolling schedules, multiple assignees, assignment strategies, nagging notifications, pre-due notifications, private chores, points, sub-tasks)
+- Premium membership no longer required for advanced features
+
+**Quick Migration**:
+1. Replace `DONETICK_API_TOKEN` environment variable with `DONETICK_USERNAME` and `DONETICK_PASSWORD`
+2. Update your `.env` file or Claude Desktop configuration
+3. Restart the server
+
+See the [Migration Guide](MIGRATION.md) for detailed instructions.
+
 ## Features
 
 - **5 Core Tools**: List, get, create, complete, and delete chores
-- **Full Chore Configuration**: Support for recurrence, assignments, notifications, labels, priority, points, and more
+- **Full Chore Configuration**: All 26+ fields now working including frequency metadata, rolling schedules, multiple assignees, assignment strategies, notifications, labels, priority, points, sub-tasks, and more
+- **JWT Authentication**: Automatic token management with transparent refresh
 - **Smart Caching**: Intelligent caching for get_chore operations (60s TTL by default)
 - **Rate Limiting**: Token bucket algorithm prevents API overload
 - **Retry Logic**: Exponential backoff with jitter for resilient operations
 - **Async/Await**: Non-blocking operations using httpx
 - **Input Validation**: Pydantic field validators with sanitization
-- **Security Hardened**: HTTPS enforcement, sanitized logging, secure error messages
+- **Security Hardened**: HTTPS enforcement, sanitized logging, secure error messages, JWT token security
 - **Docker Support**: Containerized deployment with security best practices
 - **Comprehensive Testing**: Unit and integration tests with pytest
 - **Type Safety**: Pydantic models for request/response validation
 
+## Quick Start
+
+**Easiest installation (Claude Code CLI):**
+
+```bash
+claude mcp add donetick uvx donetick-mcp-server@latest
+```
+
+Then configure your Donetick credentials when prompted.
+
+**Or install manually with uvx:**
+
+```bash
+# Install uv (one-time setup)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Add to Claude Desktop config
+# ~/.config/Claude/claude_desktop_config.json
+{
+  "mcpServers": {
+    "donetick": {
+      "command": "uvx",
+      "args": ["--refresh", "donetick-mcp-server"],
+      "env": {
+        "DONETICK_BASE_URL": "https://your-instance.com",
+        "DONETICK_USERNAME": "your_username",
+        "DONETICK_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+**Benefits:**
+- ✅ No installation required - runs directly from PyPI
+- ✅ Auto-updates with `--refresh` flag
+- ✅ Isolated environment - no conflicts
+- ✅ Works on Windows, macOS, Linux
+
 ## Requirements
 
-- Python 3.11 or higher
 - Donetick instance (self-hosted or cloud)
-- Donetick Plus/Premium membership (for complete and update operations)
-- Donetick API token
+- Donetick account credentials (username and password)
+- **For uvx method:** `uv` installed (see Quick Start)
+- **For other methods:** Python 3.11 or higher
 
 ## Installation
 
-### Option 1: Docker (Recommended)
+### Option 1: uvx (Recommended - No Installation Required)
+
+See [Quick Start](#quick-start) above.
+
+The `--refresh` flag ensures you always get the latest version when Claude Desktop restarts.
+
+### Option 2: Docker
 
 1. **Clone the repository**:
    ```bash
@@ -42,7 +105,8 @@ A production-ready Model Context Protocol (MCP) server for [Donetick](https://do
 3. **Configure environment variables**:
    ```env
    DONETICK_BASE_URL=https://your-instance.com
-   DONETICK_API_TOKEN=your_api_token_here
+   DONETICK_USERNAME=your_username
+   DONETICK_PASSWORD=your_password
    LOG_LEVEL=INFO
    ```
 
@@ -52,47 +116,94 @@ A production-ready Model Context Protocol (MCP) server for [Donetick](https://do
    docker-compose up -d
    ```
 
-### Option 2: Python Virtual Environment
+### Option 3: pip install (For System Integration)
 
-1. **Clone and setup**:
-   ```bash
-   git clone https://github.com/jason1365/donetick-mcp-server.git
-   cd donetick-mcp-server
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
+If you want to install globally or in a virtual environment:
 
-2. **Install dependencies**:
-   ```bash
-   pip install -e .
-   ```
+```bash
+# Install from PyPI
+pip install donetick-mcp-server
 
-3. **Set environment variables**:
-   ```bash
-   export DONETICK_BASE_URL=https://your-instance.com
-   export DONETICK_API_TOKEN=your_api_token_here
-   ```
+# Or install for development
+git clone https://github.com/jason1365/donetick-mcp-server.git
+cd donetick-mcp-server
+pip install -e .
 
-4. **Run the server**:
-   ```bash
-   python -m donetick_mcp.server
-   ```
+# Run the server
+donetick-mcp-server
+# Or: python -m donetick_mcp.server
+```
 
-## Getting Your API Token
+Then configure Claude Desktop to use the installed command:
 
-1. Log into your Donetick instance
-2. Navigate to **Settings** → **Advanced Settings** → **Access Token**
-3. Click **"Generate new token"**
-4. Give it a descriptive name (e.g., "MCP Server")
-5. Copy the generated token (save it securely - it won't be shown again)
+```json
+{
+  "mcpServers": {
+    "donetick": {
+      "command": "donetick-mcp-server",
+      "env": {
+        "DONETICK_BASE_URL": "https://your-instance.com",
+        "DONETICK_USERNAME": "your_username",
+        "DONETICK_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+## Authentication
+
+v2.0.0 uses JWT-based authentication with your Donetick credentials.
+
+**What You Need**:
+- Your Donetick username (same as web login)
+- Your Donetick password (same as web login)
+
+**How It Works**:
+1. Server logs in with your credentials on startup
+2. JWT token received and stored in memory
+3. Token automatically refreshed before expiration
+4. No manual token management required
+
+**Security**:
+- Credentials stored only in environment variables or `.env` file
+- JWT tokens kept in memory only (never persisted to disk)
+- Automatic token refresh prevents session expiration
+- HTTPS required for all connections
 
 ## Claude Desktop Integration
 
-Add to your Claude Desktop configuration file:
+**Easiest Method - Claude Code CLI:**
+
+```bash
+claude mcp add donetick uvx donetick-mcp-server@latest
+```
+
+**Or manually edit the configuration file:**
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 **Linux**: `~/.config/Claude/claude_desktop_config.json`
+
+### uvx Configuration (Recommended)
+
+```json
+{
+  "mcpServers": {
+    "donetick": {
+      "command": "uvx",
+      "args": ["--refresh", "donetick-mcp-server"],
+      "env": {
+        "DONETICK_BASE_URL": "https://your-instance.com",
+        "DONETICK_USERNAME": "your_username",
+        "DONETICK_PASSWORD": "your_password"
+      }
+    }
+  }
+}
+```
+
+**Note:** The `--refresh` flag automatically updates to the latest version.
 
 ### Docker Configuration
 
@@ -114,20 +225,17 @@ Add to your Claude Desktop configuration file:
 }
 ```
 
-### Python Configuration
+### pip install Configuration
 
 ```json
 {
   "mcpServers": {
     "donetick": {
-      "command": "python",
-      "args": [
-        "-m",
-        "donetick_mcp.server"
-      ],
+      "command": "donetick-mcp-server",
       "env": {
         "DONETICK_BASE_URL": "https://your-instance.com",
-        "DONETICK_API_TOKEN": "your_api_token_here"
+        "DONETICK_USERNAME": "your_username",
+        "DONETICK_PASSWORD": "your_password"
       }
     }
   }
@@ -220,7 +328,7 @@ labels "shopping" and "outdoor", and award 10 points
 
 ### 4. complete_chore
 
-Mark a chore as complete. **Requires Donetick Plus/Premium**.
+Mark a chore as complete.
 
 **Parameters**:
 - `chore_id` (integer, required): The chore ID
@@ -249,8 +357,9 @@ Delete chore 123
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DONETICK_BASE_URL` | Yes | - | Your Donetick instance URL |
-| `DONETICK_API_TOKEN` | Yes | - | API token from Donetick |
+| `DONETICK_BASE_URL` | Yes | - | Your Donetick instance URL (must use HTTPS) |
+| `DONETICK_USERNAME` | Yes | - | Your Donetick username |
+| `DONETICK_PASSWORD` | Yes | - | Your Donetick password |
 | `LOG_LEVEL` | No | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `RATE_LIMIT_PER_SECOND` | No | 10.0 | Requests per second limit |
 | `RATE_LIMIT_BURST` | No | 10 | Maximum burst size |
@@ -312,16 +421,17 @@ donetick-mcp-server/
 
 ## API Documentation
 
-This server uses the Donetick external API (eAPI). Official documentation:
-- **API Docs**: https://docs.donetick.com/advance-settings/api/
+This server uses the Donetick Full API with JWT authentication. Official documentation:
+- **API Docs**: https://docs.donetick.com/
 - **GitHub**: https://github.com/donetick/donetick
 
 ### Important Notes
 
-1. **Authentication**: Uses `secretkey` header (not standard Bearer token)
-2. **Premium Features**: Complete and update operations require Donetick Plus
-3. **No GET by ID**: The API doesn't have GET /chore/:id, so we fetch all and filter
+1. **Authentication**: Uses JWT Bearer tokens (automatically managed)
+2. **Full Feature Support**: All 26+ chore creation fields now working
+3. **Automatic Token Refresh**: JWT tokens refreshed transparently
 4. **Circle Scoped**: All operations are scoped to your circle (household/team)
+5. **No Premium Required**: Advanced features work with standard accounts
 
 ## Troubleshooting
 
@@ -340,10 +450,11 @@ This server uses the Donetick external API (eAPI). Official documentation:
 - Check that your Donetick instance is accessible
 - Ensure firewall rules allow outbound connections
 
-**"401 Unauthorized"**
-- Verify your API token is correct
-- Check that the token hasn't been revoked
-- Generate a new token from Donetick settings if needed
+**"401 Unauthorized" or "Invalid credentials"**
+- Verify your username and password are correct
+- Check that your account is not locked or disabled
+- Ensure you can login to Donetick web interface with the same credentials
+- Check for typos in environment variables
 
 **Tools not showing in Claude**
 - Restart Claude Desktop after configuration changes
@@ -373,11 +484,13 @@ docker-compose logs -f donetick-mcp
 
 ## Security
 
-- **API Token**: Never commit tokens to version control
+- **Credentials**: Never commit credentials to version control (use `.env` file)
+- **JWT Tokens**: Stored in memory only, never persisted to disk
+- **Automatic Token Refresh**: Prevents session expiration without user intervention
 - **Docker Isolation**: Runs as non-root user in container
 - **Resource Limits**: Memory and CPU limits prevent resource exhaustion
 - **Input Validation**: Pydantic models validate all inputs
-- **HTTPS**: Always use HTTPS for Donetick instance URLs
+- **HTTPS Required**: Server enforces HTTPS for all Donetick connections
 
 ## Contributing
 

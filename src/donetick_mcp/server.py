@@ -10,6 +10,7 @@ import httpx
 from mcp.server import Server
 from mcp.types import TextContent, Tool
 
+from . import __version__
 from .client import DonetickClient
 from .config import config
 from .models import ChoreCreate
@@ -237,6 +238,83 @@ async def list_tools() -> list[Tool]:
                 "required": ["chore_id"],
             },
         ),
+        Tool(
+            name="list_labels",
+            description=(
+                "List all labels in the circle. "
+                "Returns all available labels with their IDs, names, and colors. "
+                "Use these labels to organize and categorize chores."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="create_label",
+            description=(
+                "Create a new label for organizing chores. "
+                "Labels help categorize and filter chores by type, location, or any custom criteria. "
+                "Optionally specify a color in hex format (e.g., '#FF5733')."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Label name (required)",
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "Label color in hex format (e.g., '#80d8ff'), optional",
+                    },
+                },
+                "required": ["name"],
+            },
+        ),
+        Tool(
+            name="update_label",
+            description=(
+                "Update an existing label's name and/or color. "
+                "Use this to rename labels or change their colors for better organization."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "label_id": {
+                        "type": "integer",
+                        "description": "The ID of the label to update",
+                    },
+                    "name": {
+                        "type": "string",
+                        "description": "New label name",
+                    },
+                    "color": {
+                        "type": "string",
+                        "description": "New label color in hex format (e.g., '#80d8ff'), optional",
+                    },
+                },
+                "required": ["label_id", "name"],
+            },
+        ),
+        Tool(
+            name="delete_label",
+            description=(
+                "Delete a label permanently. "
+                "This will remove the label from all chores that use it. "
+                "Use with caution as this action cannot be undone."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "label_id": {
+                        "type": "integer",
+                        "description": "The ID of the label to delete",
+                    },
+                },
+                "required": ["label_id"],
+            },
+        ),
     ]
 
 
@@ -362,6 +440,66 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 )
             ]
 
+        elif name == "list_labels":
+            labels = await client.get_labels()
+
+            # Format labels for display
+            labels_text = "Available Labels:\n\n"
+            for label in labels:
+                color_info = f" (Color: {label.color})" if label.color else ""
+                labels_text += f"- ID {label.id}: {label.name}{color_info}\n"
+
+            if not labels:
+                labels_text = "No labels found in this circle."
+
+            return [
+                TextContent(
+                    type="text",
+                    text=labels_text,
+                )
+            ]
+
+        elif name == "create_label":
+            name_arg = arguments["name"]
+            color = arguments.get("color")
+
+            label = await client.create_label(name=name_arg, color=color)
+
+            color_info = f" with color {label.color}" if label.color else ""
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Successfully created label '{label.name}' (ID: {label.id}){color_info}.",
+                )
+            ]
+
+        elif name == "update_label":
+            label_id = arguments["label_id"]
+            name_arg = arguments["name"]
+            color = arguments.get("color")
+
+            label = await client.update_label(label_id=label_id, name=name_arg, color=color)
+
+            color_info = f" with color {label.color}" if label.color else ""
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Successfully updated label ID {label.id} to '{label.name}'{color_info}.",
+                )
+            ]
+
+        elif name == "delete_label":
+            label_id = arguments["label_id"]
+
+            await client.delete_label(label_id)
+
+            return [
+                TextContent(
+                    type="text",
+                    text=f"Successfully deleted label with ID {label_id}.",
+                )
+            ]
+
         else:
             return [
                 TextContent(
@@ -377,7 +515,7 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         # Return sanitized error to user
         status_code = e.response.status_code
         if status_code == 401:
-            error_msg = "Authentication failed. Please check your API token."
+            error_msg = "Authentication failed. Please check your username and password."
         elif status_code == 403:
             error_msg = "Permission denied. This operation may require Donetick Plus membership."
         elif status_code == 404:
@@ -430,24 +568,45 @@ def sanitize_url(url: str) -> str:
         return "[URL]"
 
 
+async def main_async():
+    """Async main entry point for the MCP server."""
+    import sys
+    from mcp.server.stdio import stdio_server
+
+    logger.info(f"Starting Donetick MCP Server v{__version__}")
+    logger.info(f"Connecting to: {sanitize_url(config.donetick_base_url)}")
+    logger.info(f"Username: {config.donetick_username}")
+
+    # Print to stderr for visibility in Claude Desktop
+    print(f"Donetick MCP Server v{__version__} starting...", file=sys.stderr)
+
+    # Run with stdio transport - this blocks until the server stops
+    logger.info("Initializing stdio transport...")
+    async with stdio_server() as (read_stream, write_stream):
+        logger.info("Server running and ready to accept requests")
+        await app.run(
+            read_stream,
+            write_stream,
+            app.create_initialization_options()
+        )
+
+
 def main():
     """Main entry point for the MCP server."""
     import sys
+    import traceback
 
     try:
-        # Run the MCP server with stdio transport
-        import mcp.server.stdio
-
-        logger.info("Starting Donetick MCP server...")
-        logger.info(f"Connecting to: {sanitize_url(config.donetick_base_url)}")
-
-        # Run with stdio transport
-        mcp.server.stdio.stdio_server()(app)
+        # Run the async main function
+        asyncio.run(main_async())
 
     except KeyboardInterrupt:
         logger.info("Server interrupted by user")
     except Exception as e:
-        logger.error(f"Server error: {e}", exc_info=True)
+        # Log to both logger and stderr to ensure visibility in Claude Desktop logs
+        error_msg = f"Server error: {e}\n{traceback.format_exc()}"
+        logger.error(error_msg)
+        print(error_msg, file=sys.stderr)
         sys.exit(1)
     finally:
         # Cleanup with proper async handling
@@ -461,8 +620,19 @@ def main():
                 # Create new loop for cleanup
                 asyncio.run(cleanup())
         except Exception as e:
-            logger.error(f"Cleanup error: {e}", exc_info=True)
+            cleanup_error = f"Cleanup error: {e}\n{traceback.format_exc()}"
+            logger.error(cleanup_error)
+            print(cleanup_error, file=sys.stderr)
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    import traceback
+
+    try:
+        main()
+    except Exception as e:
+        # Catch any errors during initialization (e.g., config validation)
+        error_msg = f"Failed to start server: {e}\n{traceback.format_exc()}"
+        print(error_msg, file=sys.stderr)
+        sys.exit(1)

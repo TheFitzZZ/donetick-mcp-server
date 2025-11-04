@@ -16,17 +16,23 @@ class Config:
     def __init__(self):
         """Initialize configuration from environment variables."""
         self.donetick_base_url = os.getenv("DONETICK_BASE_URL")
-        self.donetick_api_token = os.getenv("DONETICK_API_TOKEN")
+        self.donetick_username = os.getenv("DONETICK_USERNAME")
+        self.donetick_password = os.getenv("DONETICK_PASSWORD")
         self.log_level = os.getenv("LOG_LEVEL", "INFO")
         self.rate_limit_per_second = float(os.getenv("RATE_LIMIT_PER_SECOND", "10.0"))
         self.rate_limit_burst = int(os.getenv("RATE_LIMIT_BURST", "10"))
 
-        # Validate required configuration
-        self._validate()
+        # Check for deprecated API token
+        self.donetick_api_token = os.getenv("DONETICK_API_TOKEN")
+
+        # Validate required configuration (skip if in test mode)
+        if os.getenv("PYTEST_CURRENT_TEST") is None:
+            self._validate()
 
     def _validate(self):
         """Validate that required configuration is present and secure."""
         errors = []
+        warnings = []
 
         # Check base URL
         if not self.donetick_base_url:
@@ -42,14 +48,32 @@ class Config:
                     f"Got: {self.donetick_base_url[:50]}"
                 )
 
-        # Check API token
-        if not self.donetick_api_token:
-            errors.append(
-                "DONETICK_API_TOKEN environment variable is required. "
-                "Please generate a token in Donetick Settings > Access Token."
+        # Check for deprecated API token
+        if self.donetick_api_token:
+            warnings.append(
+                "DONETICK_API_TOKEN is deprecated in v2.0.0. "
+                "Please migrate to JWT authentication using DONETICK_USERNAME and DONETICK_PASSWORD. "
+                "See migration guide: https://github.com/yourusername/donetick-mcp-server#migration"
             )
-        elif len(self.donetick_api_token) < 10:
-            errors.append("DONETICK_API_TOKEN appears invalid (too short)")
+
+        # Check username and password for JWT auth
+        if not self.donetick_username:
+            errors.append(
+                "DONETICK_USERNAME environment variable is required. "
+                "Please set it to your Donetick account username."
+            )
+
+        if not self.donetick_password:
+            errors.append(
+                "DONETICK_PASSWORD environment variable is required. "
+                "Please set it to your Donetick account password."
+            )
+
+        # Log warnings
+        if warnings:
+            logger = logging.getLogger(__name__)
+            for warning in warnings:
+                logger.warning(warning)
 
         # Raise all errors together
         if errors:

@@ -114,8 +114,8 @@ The codebase follows a clean separation of concerns:
 - **Global State**: Maintains a single `DonetickClient` instance
 - **Tools Exposed**:
   - `list_chores`: List with filters (active status, assigned user)
-  - `get_chore`: Get by ID (uses client-side filtering)
-  - `create_chore`: Create new chore
+  - `get_chore`: Get by ID (uses direct GET endpoint, includes sub-tasks)
+  - `create_chore`: Create new chore (supports sub-tasks)
   - `complete_chore`: Mark complete (Premium feature)
   - `delete_chore`: Delete chore (creator only)
 
@@ -126,14 +126,15 @@ The codebase follows a clean separation of concerns:
 - **HTTP Client**: Uses `httpx.AsyncClient` with connection pooling
 - **Rate Limiting**: Token bucket algorithm (default: 10 req/sec)
 - **Retry Logic**: Exponential backoff with jitter for 5xx errors and 429
-- **Authentication**: Uses `secretkey` header (NOT standard Bearer token)
+- **Authentication**: Uses JWT Bearer tokens (automatically managed)
 - **Context Manager**: Supports async with for resource cleanup
 
 **Key Implementation Details**:
-- Connection pool: max 100 connections, 20 keepalive
+- Connection pool: max 100 connections, 50 keepalive
 - Timeouts: 5s connect, 30s read, 5s write
 - No retry on 4xx errors (except 429 rate limits)
-- Client-side filtering for `get_chore` (API lacks GET by ID endpoint)
+- Direct GET endpoint for `get_chore` (includes sub-tasks via API Preload)
+- Caching for individual chore fetches (60s TTL)
 
 #### 3. Data Models (models.py)
 
@@ -149,41 +150,76 @@ All API interactions use Pydantic models for type safety:
 #### 4. Configuration (config.py)
 
 Loads from environment variables via `.env` file:
-- `DONETICK_BASE_URL` (required): Instance URL
-- `DONETICK_API_TOKEN` (required): API token from Settings > Access Token
+- `DONETICK_BASE_URL` (required): Instance URL (must use HTTPS)
+- `DONETICK_USERNAME` (required): Donetick username
+- `DONETICK_PASSWORD` (required): Donetick password
 - `LOG_LEVEL` (optional): DEBUG, INFO, WARNING, ERROR
 - `RATE_LIMIT_PER_SECOND` (optional): Default 10.0
 - `RATE_LIMIT_BURST` (optional): Default 10
 
 ## Donetick API Quirks & Gotchas
 
-### 1. Authentication Header
-Use `secretkey` header, NOT standard `Authorization: Bearer`:
+### 1. JWT Token Management
+Uses standard JWT Bearer authentication with automatic token management:
 ```python
-headers = {"secretkey": api_token}
+headers = {"Authorization": f"Bearer {jwt_token}"}
 ```
 
-### 2. Missing GET by ID Endpoint
-The API doesn't support `GET /eapi/v1/chore/:id`. Instead:
-- Fetch all chores with `GET /eapi/v1/chore`
-- Filter client-side by ID
-- Implementation in `client.py:get_chore()`
+**Token Lifecycle**:
+- Initial login on server startup with username/password
+- JWT token stored in memory (never persisted to disk)
+- Automatic refresh before expiration (typically 24h lifetime)
+- Transparent re-authentication on token expiry
+- No manual token management required
 
-### 3. Premium Features
-These operations require Donetick Plus membership:
-- `complete_chore` (POST /eapi/v1/chore/:id/complete)
-- `update_chore` (PUT /eapi/v1/chore/:id)
-- `get_circle_members` (GET /eapi/v1/circle/members)
+**Security Considerations**:
+- Credentials stored only in environment variables
+- Tokens kept in memory only
+- HTTPS required for all API calls
+- Certificate verification enforced
 
-### 4. Field Name Inconsistency
-- **Create**: PascalCase (`Name`, `Description`, `DueDate`, `CreatedBy`)
+### 2. API Endpoints (Full API vs eAPI)
+Uses the Full API (not external API/eAPI):
+- **List Chores**: `GET /api/v1/chores/` (does NOT include sub-tasks)
+- **Get Chore**: `GET /api/v1/chores/{id}` (includes sub-tasks via Preload)
+- **Create Chore**: `POST /api/v1/chores/` (supports sub-tasks)
+- **Update Chore**: `PUT /api/v1/chores/` (Premium feature)
+- **Complete Chore**: `POST /api/v1/chores/{id}/do` (Premium feature)
+- **Delete Chore**: `DELETE /api/v1/chores/{id}`
+- **Get Members**: `GET /api/v1/circles/members/` (Premium feature)
+
+**Critical**: Note the trailing slashes and `/v1/` prefix - required for proper routing!
+
+### 3. Field Name Consistency
+All operations now use camelCase consistently:
+- **Create**: camelCase (`name`, `description`, `dueDate`, `createdBy`)
 - **Update**: camelCase (`name`, `description`, `nextDueDate`)
 - **Response**: camelCase for all fields
 
-### 5. Date Format
+**Note**: This is a change from v1.x which used PascalCase for create operations.
+
+### 4. Date Format
 Accepts both formats:
 - ISO date: `2025-11-10`
 - RFC3339: `2025-11-10T00:00:00Z`
+
+### 5. All Features Now Available
+Unlike v1.x (eAPI), v0.2.0 (Full API) supports:
+- Frequency metadata (specific days/times)
+- Rolling schedules
+- Multiple assignees
+- Assignment strategies
+- Nagging notifications
+- Pre-due notifications
+- Private chores
+- Points/gamification
+- Priority levels (0-4)
+- Completion window
+- Require approval
+- Labels
+- **Sub-tasks** (checklist items with ordering and completion tracking)
+
+**Note**: Some operations (update, complete, circle members) require Premium/Plus membership.
 
 ## Testing Strategy
 
@@ -193,7 +229,7 @@ The test suite uses mocked HTTP responses (pytest-httpx) to avoid hitting the re
    - Rate limiting behavior
    - Retry logic with exponential backoff
    - Error handling (4xx, 5xx, timeouts)
-   - Client-side filtering for get_chore
+   - Direct GET endpoint for get_chore with caching
 
 2. **Integration Tests** (test_server.py): Test MCP tool execution
    - Tool registration
@@ -284,7 +320,8 @@ Or for Python direct:
       "args": ["-m", "donetick_mcp.server"],
       "env": {
         "DONETICK_BASE_URL": "https://your-instance.com",
-        "DONETICK_API_TOKEN": "your_token"
+        "DONETICK_USERNAME": "your_username",
+        "DONETICK_PASSWORD": "your_password"
       }
     }
   }
@@ -304,7 +341,33 @@ Or for Python direct:
 
 ## Recent Enhancements
 
-### Security Improvements
+### v2.0.0 - JWT Authentication & Full API Migration
+
+**Breaking Changes**:
+1. **JWT Authentication**: Switched from API tokens to username/password with JWT
+2. **Full API**: Migrated from eAPI to Full API endpoints
+3. **Field Names**: Standardized on camelCase (previously mixed PascalCase/camelCase)
+
+**New Features Working**:
+1. **Frequency Metadata**: Configure specific days and times for recurring chores
+2. **Rolling Schedules**: Next due date based on completion vs fixed schedule
+3. **Multiple Assignees**: Assign chores to multiple users simultaneously
+4. **Assignment Strategies**: Control rotation (least_completed, round_robin, random)
+5. **Nagging Notifications**: Send reminder notifications
+6. **Pre-due Notifications**: Notify before due date
+7. **Private Chores**: Hide chores from other circle members
+8. **Points/Gamification**: Award points for chore completion
+9. **Sub-tasks**: Add checklist items to chores
+
+**Authentication Improvements**:
+1. **Automatic JWT Management**: Login, token storage, and refresh handled transparently
+2. **In-Memory Tokens**: JWT tokens never persisted to disk
+3. **Session Resilience**: Automatic re-authentication on token expiry
+4. **Credential Security**: Username/password in environment variables only
+
+### v0.2.0 - Security & Performance Enhancements
+
+**Security Improvements**:
 1. **HTTPS Enforcement**: Config validation ensures all connections use HTTPS
 2. **Sanitized Logging**: URLs and sensitive data are redacted from logs
 3. **Secure Error Messages**: Error responses to users don't leak internal details
@@ -312,20 +375,18 @@ Or for Python direct:
 5. **Certificate Verification**: HTTPS certificates are verified by default
 6. **Proper Cleanup**: Fixed resource leak in server shutdown
 
-### Performance Improvements
+**Performance Improvements**:
 1. **Smart Caching**: `get_chore` now caches results for 60 seconds (configurable)
 2. **Optimized Connections**: Increased keepalive connections from 20 to 50
 3. **Extended Keepalive**: Connection expiry increased from 5s to 30s
 
-### Feature Completeness
-1. **100% API Coverage**: All 24 chore creation parameters now supported
+**Feature Completeness**:
+1. **100% API Coverage**: All 26+ chore creation parameters now supported
 2. **Field Validation**: Pydantic validators for dates, frequency types, strategies
 3. **Input Sanitization**: Control character removal, length limits
 4. **Enhanced Error Handling**: Specific error messages for different HTTP status codes
 
 ## Known Limitations
 
-1. **No GET by ID**: Must fetch all chores and filter (mitigated by caching)
-2. **No Pagination**: API returns all chores in single response
-3. **Premium Required**: Complete and update operations need Plus membership
-4. **Circle Scoped**: All operations are scoped to the user's circle/household
+1. **Circle Scoped**: All operations are scoped to the user's circle/household
+2. **Credential Storage**: Username/password required in environment (consider using secrets management for production)

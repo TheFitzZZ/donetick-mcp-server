@@ -2,6 +2,122 @@
 
 All notable changes to the Donetick MCP Server will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [2.0.0] - 2025-11-03
+
+### BREAKING CHANGES
+
+**Authentication Method Changed**:
+- Removed: `DONETICK_API_TOKEN` environment variable
+- Added: `DONETICK_USERNAME` and `DONETICK_PASSWORD` environment variables
+- Changed from API token authentication (`secretkey` header) to JWT Bearer token authentication
+- JWT tokens automatically managed (login, storage, refresh)
+
+**API Endpoints Changed**:
+- Migrated from external API (eAPI) to Full API
+- Old endpoints: `/eapi/v1/chore`, `/eapi/v1/chore/:id/complete`, etc.
+- New endpoints: `/api/chores`, `/api/chores/:id/do`, etc.
+
+**Field Naming Standardized**:
+- All operations now use camelCase consistently
+- Previously: Create used PascalCase (`Name`, `Description`), Update used camelCase
+- Now: All operations use camelCase (`name`, `description`, `dueDate`)
+
+**Migration Required**:
+See [MIGRATION.md](MIGRATION.md) for detailed upgrade instructions.
+
+### Added
+
+**JWT Authentication System**:
+- Automatic JWT token acquisition on server startup
+- In-memory token storage (never persisted to disk)
+- Automatic token refresh before expiration
+- Transparent re-authentication on token expiry
+- Secure credential handling via environment variables
+
+**9 Previously Non-Functional Features Now Working**:
+1. `frequency_metadata` - Configure specific days and times for recurring chores
+2. `is_rolling` - Rolling schedules (next due based on completion vs fixed)
+3. `assignees` - Assign chores to multiple users simultaneously
+4. `assign_strategy` - Control assignment rotation (least_completed, round_robin, random)
+5. `nagging` - Enable nagging/reminder notifications
+6. `predue` - Enable pre-due date notifications
+7. `is_private` - Private chores visible only to creator
+8. `points` - Award points for chore completion (gamification)
+9. `sub_tasks` - Add checklist items to chores
+
+**Enhanced Security**:
+- JWT tokens stored in memory only (not persisted)
+- Automatic token lifecycle management
+- Improved credential security practices
+- Enhanced logging with credential redaction
+
+### Changed
+
+**API Client Refactored**:
+- Switched to Full API endpoints from eAPI
+- Implemented JWT token management layer
+- Updated authentication headers to use Bearer tokens
+- Improved error handling for authentication failures
+
+**Model Updates**:
+- ChoreCreate model now uses camelCase field names
+- Consistent field naming across all operations
+- Updated validation for new Full API requirements
+
+**Configuration Updates**:
+- Removed API_TOKEN configuration
+- Added USERNAME and PASSWORD configuration
+- Enhanced validation with credential checks
+- Updated example configurations
+
+**Documentation Overhaul**:
+- Created comprehensive [MIGRATION.md](MIGRATION.md) guide
+- Updated README.md with v2.0.0 breaking changes section
+- Updated CLAUDE.md with JWT authentication details
+- Added JWT token lifecycle documentation
+- Updated all code examples to use new authentication
+
+### Fixed
+
+**Feature Availability**:
+- Fixed 9 chore creation parameters that were not working in v1.x
+- All 26+ chore creation fields now fully functional
+- Premium/Plus membership no longer required for any features
+
+**Authentication Reliability**:
+- Eliminated API token expiration issues
+- Automatic session management prevents authentication errors
+- Improved error messages for authentication failures
+
+**Field Name Consistency**:
+- Resolved PascalCase/camelCase inconsistency
+- Standardized on camelCase for all API operations
+
+### Removed
+
+- API token authentication (replaced with JWT)
+- `DONETICK_API_TOKEN` environment variable
+- eAPI endpoint support
+- Premium membership requirement for advanced features
+
+### Migration
+
+Users upgrading from v1.x must:
+1. Update environment variables (replace `DONETICK_API_TOKEN` with `DONETICK_USERNAME` and `DONETICK_PASSWORD`)
+2. Update `.env` file or Claude Desktop configuration
+3. Restart the server/container
+
+For detailed migration instructions, see [MIGRATION.md](MIGRATION.md).
+
+### Known Issues
+
+- None identified in this release
+
+---
+
 ## [0.2.0] - 2025-11-03
 
 ### Added - Full Feature Implementation

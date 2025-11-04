@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 from .config import config
-from .models import Chore, ChoreCreate, ChoreUpdate, CircleMember
+from .models import Chore, ChoreCreate, ChoreUpdate, CircleMember, Label
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,8 @@ class DonetickClient:
     def __init__(
         self,
         base_url: Optional[str] = None,
-        api_token: Optional[str] = None,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
         rate_limit_per_second: Optional[float] = None,
         rate_limit_burst: Optional[int] = None,
         cache_ttl: float = 60.0,
@@ -73,13 +74,16 @@ class DonetickClient:
 
         Args:
             base_url: Donetick instance URL (defaults to config)
-            api_token: API token (defaults to config)
+            username: Donetick username (defaults to config)
+            password: Donetick password (defaults to config)
             rate_limit_per_second: Rate limit in requests per second (defaults to config)
             rate_limit_burst: Maximum burst size (defaults to config)
             cache_ttl: Cache time-to-live in seconds (default: 60.0)
         """
         self.base_url = (base_url or config.donetick_base_url).rstrip("/")
-        self.api_token = api_token or config.donetick_api_token
+        self.username = username or config.donetick_username
+        self.password = password or config.donetick_password
+        self._jwt_token: Optional[str] = None
         self.rate_limiter = TokenBucket(
             rate=rate_limit_per_second or config.rate_limit_per_second,
             capacity=rate_limit_burst or config.rate_limit_burst,
@@ -92,7 +96,6 @@ class DonetickClient:
         # Configure httpx client with connection pooling and timeouts
         self.client = httpx.AsyncClient(
             headers={
-                "secretkey": self.api_token,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             },
@@ -123,6 +126,51 @@ class DonetickClient:
         if self.client:
             await self.client.aclose()
 
+    async def login(self):
+        """
+        Authenticate with Donetick API and retrieve JWT token.
+
+        Makes a POST request to /api/v1/auth/login with username and password,
+        then stores the returned JWT token for subsequent requests.
+
+        Raises:
+            httpx.HTTPError: On authentication failure
+            ValueError: If login response doesn't contain token
+        """
+        url = f"{self.base_url}/api/v1/auth/login"
+
+        logger.debug("Authenticating with Donetick API")
+
+        try:
+            response = await self.client.post(
+                url,
+                json={
+                    "username": self.username,
+                    "password": self.password,
+                }
+            )
+            response.raise_for_status()
+
+            data = response.json()
+
+            if "token" not in data:
+                logger.error("Login response missing 'token' field")
+                raise ValueError("Invalid login response: missing token")
+
+            self._jwt_token = data["token"]
+
+            # Update client headers with Bearer token
+            self.client.headers["Authorization"] = f"Bearer {self._jwt_token}"
+
+            logger.info("Successfully authenticated with Donetick API")
+
+        except httpx.HTTPStatusError as e:
+            logger.error(f"Authentication failed: {e.response.status_code}")
+            raise
+        except json_lib.JSONDecodeError as e:
+            logger.error("Invalid JSON response from login endpoint")
+            raise ValueError(f"Invalid JSON response from login: {e}") from e
+
     async def _request(
         self,
         method: str,
@@ -145,8 +193,13 @@ class DonetickClient:
         Raises:
             httpx.HTTPError: On HTTP errors after all retries exhausted
         """
+        # Ensure we have a valid JWT token (lazy initialization)
+        if self._jwt_token is None:
+            await self.login()
+
         url = f"{self.base_url}{path}"
         base_delay = 1.0
+        auth_retry_attempted = False
 
         for attempt in range(max_retries):
             try:
@@ -164,6 +217,21 @@ class DonetickClient:
                     logger.warning(f"Rate limited, waiting {wait_time}s")
                     await asyncio.sleep(wait_time)
                     continue
+
+                # Handle authentication errors (401 Unauthorized)
+                if response.status_code == 401:
+                    if not auth_retry_attempted:
+                        logger.warning("Authentication failed (401), refreshing JWT token")
+                        auth_retry_attempted = True
+                        await self.login()
+                        continue
+                    else:
+                        logger.error("Authentication failed after token refresh")
+                        raise httpx.HTTPStatusError(
+                            "Authentication failed: Invalid credentials or expired session",
+                            request=response.request,
+                            response=response
+                        )
 
                 # Raise for other HTTP errors
                 response.raise_for_status()
@@ -189,8 +257,8 @@ class DonetickClient:
                 await asyncio.sleep(wait_time)
 
             except httpx.HTTPStatusError as e:
-                # Don't retry client errors (4xx) except 429
-                if 400 <= e.response.status_code < 500 and e.response.status_code != 429:
+                # Don't retry client errors (4xx) except 429 and 401
+                if 400 <= e.response.status_code < 500 and e.response.status_code not in (429, 401):
                     logger.error(f"Client error: {e.response.status_code} - {e.response.text}")
                     raise
 
@@ -226,10 +294,13 @@ class DonetickClient:
             List of Chore objects
         """
         logger.info("Fetching chores list")
-        data = await self._request("GET", "/eapi/v1/chore")
+        data = await self._request("GET", "/api/v1/chores/")
+
+        # API returns {'res': [chores]} format
+        chores_list = data.get('res', []) if isinstance(data, dict) else data
 
         # Parse response into Chore objects
-        chores = [Chore(**chore_data) for chore_data in data]
+        chores = [Chore(**chore_data) for chore_data in chores_list]
 
         # Apply filters
         if filter_active is not None:
@@ -247,15 +318,13 @@ class DonetickClient:
         """
         Get a specific chore by ID with caching.
 
-        Note: Since GET /chore/:id doesn't exist in the API,
-        this fetches all chores and filters client-side. Results
-        are cached to reduce API calls.
+        Uses GET /api/v1/chores/{id} endpoint which includes sub-tasks.
 
         Args:
             chore_id: Chore ID
 
         Returns:
-            Chore object if found, None otherwise
+            Chore object if found (including sub-tasks), None otherwise
         """
         # Check cache
         if chore_id in self._chore_cache:
@@ -266,23 +335,27 @@ class DonetickClient:
             else:
                 logger.debug(f"Cache expired for chore {chore_id}")
 
-        # Cache miss or expired - fetch all chores
-        logger.info(f"Fetching all chores to find {chore_id} (cache miss)")
-        chores = await self.list_chores()
+        # Cache miss or expired - fetch specific chore (includes sub-tasks!)
+        logger.info(f"Fetching chore {chore_id} directly (includes sub-tasks)")
 
-        # Update cache for all chores
-        current_time = time.time()
-        for chore in chores:
-            self._chore_cache[chore.id] = (current_time, chore)
+        try:
+            data = await self._request("GET", f"/api/v1/chores/{chore_id}")
 
-        # Find and return the requested chore
-        for chore in chores:
-            if chore.id == chore_id:
-                logger.info(f"Found chore {chore_id}: {chore.name}")
-                return chore
+            # API returns {'res': chore} format, unwrap it
+            chore_data = data.get('res', data) if isinstance(data, dict) else data
+            chore = Chore(**chore_data)
 
-        logger.warning(f"Chore {chore_id} not found")
-        return None
+            # Cache the result
+            self._chore_cache[chore_id] = (time.time(), chore)
+
+            logger.info(f"Found chore {chore_id}: {chore.name}")
+            return chore
+
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                logger.warning(f"Chore {chore_id} not found")
+                return None
+            raise
 
     def clear_cache(self):
         """Clear the chore cache."""
@@ -299,11 +372,24 @@ class DonetickClient:
         Returns:
             Created Chore object
         """
-        logger.info(f"Creating chore: {chore.Name}")
-        data = await self._request("POST", "/eapi/v1/chore", json=chore.model_dump(exclude_none=True))
+        logger.info(f"Creating chore: {chore.name}")
+        data = await self._request("POST", "/api/v1/chores/", json=chore.model_dump(exclude_none=True))
 
-        created_chore = Chore(**data)
-        logger.info(f"Created chore {created_chore.id}: {created_chore.name}")
+        # API returns {'res': chore_id} on successful creation
+        chore_id = data.get('res') if isinstance(data, dict) else None
+
+        if chore_id is None:
+            raise ValueError("Failed to get chore ID from create response")
+
+        logger.info(f"Created chore with ID: {chore_id}")
+
+        # Fetch the created chore to return full details
+        created_chore = await self.get_chore(chore_id)
+
+        if created_chore is None:
+            raise ValueError(f"Failed to fetch created chore {chore_id}")
+
+        logger.info(f"Fetched created chore {created_chore.id}: {created_chore.name}")
         return created_chore
 
     async def update_chore(self, chore_id: int, update: ChoreUpdate) -> Chore:
@@ -322,7 +408,7 @@ class DonetickClient:
         logger.info(f"Updating chore {chore_id}")
         data = await self._request(
             "PUT",
-            f"/eapi/v1/chore/{chore_id}",
+            f"/api/v1/chores/{chore_id}",
             json=update.model_dump(exclude_none=True),
         )
 
@@ -343,7 +429,7 @@ class DonetickClient:
             True if deletion successful
         """
         logger.info(f"Deleting chore {chore_id}")
-        await self._request("DELETE", f"/eapi/v1/chore/{chore_id}")
+        await self._request("DELETE", f"/api/v1/chores/{chore_id}")
         logger.info(f"Deleted chore {chore_id}")
         return True
 
@@ -372,7 +458,7 @@ class DonetickClient:
 
         data = await self._request(
             "POST",
-            f"/eapi/v1/chore/{chore_id}/complete",
+            f"/api/v1/chores/{chore_id}/do",
             params=params,
         )
 
@@ -390,8 +476,95 @@ class DonetickClient:
             List of CircleMember objects
         """
         logger.info("Fetching circle members")
-        data = await self._request("GET", "/eapi/v1/circle/members")
+        data = await self._request("GET", "/api/v1/circles/members")
 
-        members = [CircleMember(**member_data) for member_data in data]
+        # API returns {'res': [...]} format
+        members_data = data.get('res', data) if isinstance(data, dict) else data
+        members = [CircleMember(**member_data) for member_data in members_data]
         logger.info(f"Retrieved {len(members)} circle members")
         return members
+
+    async def get_labels(self) -> list[Label]:
+        """
+        Get all labels in the user's circle.
+
+        Returns:
+            List of Label objects
+        """
+        logger.info("Fetching labels")
+        data = await self._request("GET", "/api/v1/labels")
+
+        # API returns {'res': [...]} format
+        labels_data = data.get('res', data) if isinstance(data, dict) else data
+        labels = [Label(**label_data) for label_data in labels_data]
+        logger.info(f"Retrieved {len(labels)} labels")
+        return labels
+
+    async def create_label(self, name: str, color: Optional[str] = None) -> Label:
+        """
+        Create a new label.
+
+        Args:
+            name: Label name (required)
+            color: Label color in hex format (e.g., "#80d8ff"), optional
+
+        Returns:
+            Created Label object
+        """
+        logger.info(f"Creating label: {name}")
+
+        payload = {"name": name}
+        if color:
+            payload["color"] = color
+
+        data = await self._request("POST", "/api/v1/labels", json=payload)
+
+        # API returns {'res': label} format
+        label_data = data.get('res', data) if isinstance(data, dict) else data
+        label = Label(**label_data)
+        logger.info(f"Created label with ID: {label.id}")
+        return label
+
+    async def update_label(self, label_id: int, name: str, color: Optional[str] = None) -> Label:
+        """
+        Update an existing label.
+
+        Args:
+            label_id: Label ID to update
+            name: New label name
+            color: New label color in hex format, optional
+
+        Returns:
+            Updated Label object
+        """
+        logger.info(f"Updating label {label_id}")
+
+        payload = {
+            "id": label_id,
+            "name": name
+        }
+        if color:
+            payload["color"] = color
+
+        data = await self._request("PUT", "/api/v1/labels", json=payload)
+
+        # API returns {'res': label} format
+        label_data = data.get('res', data) if isinstance(data, dict) else data
+        label = Label(**label_data)
+        logger.info(f"Updated label {label_id}")
+        return label
+
+    async def delete_label(self, label_id: int) -> bool:
+        """
+        Delete a label.
+
+        Args:
+            label_id: Label ID to delete
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"Deleting label {label_id}")
+        await self._request("DELETE", f"/api/v1/labels/{label_id}")
+        logger.info(f"Deleted label {label_id}")
+        return True

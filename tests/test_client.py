@@ -12,9 +12,20 @@ def client():
     """Create a test client instance."""
     return DonetickClient(
         base_url="https://test.donetick.com",
-        api_token="test_token",
+        username="test_user",
+        password="test_password",
         rate_limit_per_second=100.0,  # High limit for fast tests
         rate_limit_burst=100,
+    )
+
+
+@pytest.fixture
+def mock_login(httpx_mock: HTTPXMock):
+    """Mock the login endpoint for authentication."""
+    httpx_mock.add_response(
+        url="https://test.donetick.com/api/v1/auth/login",
+        json={"token": "test_jwt_token"},
+        method="POST",
     )
 
 
@@ -82,7 +93,7 @@ class TestDonetickClient:
     """Tests for DonetickClient."""
 
     @pytest.mark.asyncio
-    async def test_list_chores(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_list_chores(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test listing all chores."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore",
@@ -97,7 +108,7 @@ class TestDonetickClient:
         assert chores[0].name == "Test Chore"
 
     @pytest.mark.asyncio
-    async def test_list_chores_filter_active(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_list_chores_filter_active(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test filtering chores by active status."""
         inactive_chore = sample_chore_data.copy()
         inactive_chore["id"] = 2
@@ -116,7 +127,7 @@ class TestDonetickClient:
 
     @pytest.mark.asyncio
     async def test_list_chores_filter_assigned_to(
-        self, client, sample_chore_data, httpx_mock: HTTPXMock
+        self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login
     ):
         """Test filtering chores by assigned user."""
         other_user_chore = sample_chore_data.copy()
@@ -135,7 +146,7 @@ class TestDonetickClient:
         assert user_chores[0].assignedTo == 1
 
     @pytest.mark.asyncio
-    async def test_get_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_get_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test getting a specific chore by ID."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore",
@@ -150,7 +161,7 @@ class TestDonetickClient:
         assert chore.name == "Test Chore"
 
     @pytest.mark.asyncio
-    async def test_get_chore_not_found(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_get_chore_not_found(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test getting a non-existent chore."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore",
@@ -163,7 +174,7 @@ class TestDonetickClient:
         assert chore is None
 
     @pytest.mark.asyncio
-    async def test_create_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_create_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test creating a new chore."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore",
@@ -183,7 +194,7 @@ class TestDonetickClient:
         assert chore.name == "Test Chore"
 
     @pytest.mark.asyncio
-    async def test_delete_chore(self, client, httpx_mock: HTTPXMock):
+    async def test_delete_chore(self, client, httpx_mock: HTTPXMock, mock_login):
         """Test deleting a chore."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore/1",
@@ -197,7 +208,7 @@ class TestDonetickClient:
         assert result is True
 
     @pytest.mark.asyncio
-    async def test_complete_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_complete_chore(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test completing a chore."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore/1/complete",
@@ -212,7 +223,7 @@ class TestDonetickClient:
         assert chore.name == "Test Chore"
 
     @pytest.mark.asyncio
-    async def test_rate_limit_429_retry(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_rate_limit_429_retry(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test retry logic on 429 rate limit."""
         # First request returns 429
         httpx_mock.add_response(
@@ -232,7 +243,7 @@ class TestDonetickClient:
         assert len(chores) == 1
 
     @pytest.mark.asyncio
-    async def test_http_error_4xx_no_retry(self, client, httpx_mock: HTTPXMock):
+    async def test_http_error_4xx_no_retry(self, client, httpx_mock: HTTPXMock, mock_login):
         """Test that 4xx errors don't retry (except 429)."""
         httpx_mock.add_response(
             url="https://test.donetick.com/eapi/v1/chore",
@@ -254,7 +265,7 @@ class TestDonetickClient:
         assert client.client.is_closed
 
     @pytest.mark.asyncio
-    async def test_concurrent_requests(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+    async def test_concurrent_requests(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test handling concurrent requests."""
         import asyncio
 
@@ -273,3 +284,84 @@ class TestDonetickClient:
         # All should succeed
         assert len(results) == 5
         assert all(len(r) == 1 for r in results)
+
+    @pytest.mark.asyncio
+    async def test_jwt_login(self, client, httpx_mock: HTTPXMock):
+        """Test JWT authentication login."""
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/auth/login",
+            json={"token": "test_jwt_token_123"},
+            method="POST",
+        )
+
+        async with client:
+            await client.login()
+
+        assert client._jwt_token == "test_jwt_token_123"
+        assert "Authorization" in client.client.headers
+        assert client.client.headers["Authorization"] == "Bearer test_jwt_token_123"
+
+    @pytest.mark.asyncio
+    async def test_jwt_401_retry(self, client, sample_chore_data, httpx_mock: HTTPXMock):
+        """Test that 401 errors trigger token refresh and retry."""
+        # First login
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/auth/login",
+            json={"token": "initial_token"},
+            method="POST",
+        )
+        # First request returns 401
+        httpx_mock.add_response(
+            url="https://test.donetick.com/eapi/v1/chore",
+            status_code=401,
+        )
+        # Token refresh
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/auth/login",
+            json={"token": "refreshed_token"},
+            method="POST",
+        )
+        # Retry succeeds
+        httpx_mock.add_response(
+            url="https://test.donetick.com/eapi/v1/chore",
+            json=[sample_chore_data],
+        )
+
+        async with client:
+            chores = await client.list_chores()
+
+        assert len(chores) == 1
+        assert client._jwt_token == "refreshed_token"
+
+    @pytest.mark.asyncio
+    async def test_jwt_401_double_failure(self, client, httpx_mock: HTTPXMock):
+        """Test that repeated 401 errors raise authentication error."""
+        # First login
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/auth/login",
+            json={"token": "initial_token"},
+            method="POST",
+        )
+        # First request returns 401
+        httpx_mock.add_response(
+            url="https://test.donetick.com/eapi/v1/chore",
+            status_code=401,
+        )
+        # Token refresh
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/auth/login",
+            json={"token": "refreshed_token"},
+            method="POST",
+        )
+        # Retry also fails with 401
+        httpx_mock.add_response(
+            url="https://test.donetick.com/eapi/v1/chore",
+            status_code=401,
+        )
+
+        async with client:
+            with pytest.raises(Exception) as exc_info:
+                await client.list_chores()
+
+        # Should contain authentication failure message
+        assert "Authentication failed" in str(exc_info.value)
