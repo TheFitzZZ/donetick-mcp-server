@@ -421,6 +421,32 @@ async def list_tools() -> list[Tool]:
                 "properties": {},
             },
         ),
+        Tool(
+            name="list_circle_users",
+            description=(
+                "List all users in the circle with basic information. "
+                "Returns user IDs, usernames, display names, email addresses, "
+                "roles, points earned, and active status. "
+                "Similar to get_circle_members but may include additional user details."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="get_user_profile",
+            description=(
+                "Get the current user's detailed profile information. "
+                "Returns comprehensive user data including notification preferences, "
+                "webhook configuration, storage usage, points, and account metadata. "
+                "Use this to view or manage personal settings and statistics."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
     ]
 
 
@@ -720,6 +746,79 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
                 )
             ]
 
+        elif name == "list_circle_users":
+            users = await client.list_users()
+
+            # Format user information
+            user_list = []
+            for user in users:
+                status_emoji = "✅" if user.isActive else "❌"
+                display_name = user.displayName or "(no display name)"
+                email = user.email or "(no email)"
+                role = user.role or "member"
+
+                user_info = (
+                    f"{status_emoji} {user.username}\n"
+                    f"  User ID: {user.id}\n"
+                    f"  Display Name: {display_name}\n"
+                    f"  Email: {email}\n"
+                    f"  Role: {role}\n"
+                    f"  Points: {user.points} (Redeemed: {user.pointsRedeemed})"
+                )
+                user_list.append(user_info)
+
+            result_text = (
+                f"Found {len(users)} user(s) in your circle:\n\n" +
+                "\n\n".join(user_list)
+            )
+
+            return [
+                TextContent(
+                    type="text",
+                    text=result_text,
+                )
+            ]
+
+        elif name == "get_user_profile":
+            profile = await client.get_user_profile()
+
+            # Format profile information
+            display_name = profile.displayName or "(not set)"
+            email = profile.email or "(not set)"
+            webhook = profile.webhook or "(not configured)"
+            storage_used_mb = (profile.storageUsed or 0) / (1024 * 1024)
+            storage_limit_mb = (profile.storageLimit or 0) / (1024 * 1024)
+
+            profile_info = (
+                f"👤 User Profile for {profile.username}\n\n"
+                f"📝 Basic Information:\n"
+                f"  User ID: {profile.id}\n"
+                f"  Username: {profile.username}\n"
+                f"  Display Name: {display_name}\n"
+                f"  Email: {email}\n"
+                f"  Active: {'✅ Yes' if profile.isActive else '❌ No'}\n\n"
+                f"🏆 Gamification:\n"
+                f"  Points Earned: {profile.points}\n"
+                f"  Points Redeemed: {profile.pointsRedeemed}\n"
+                f"  Net Points: {profile.points - profile.pointsRedeemed}\n\n"
+                f"💾 Storage:\n"
+                f"  Used: {storage_used_mb:.2f} MB\n"
+                f"  Limit: {storage_limit_mb:.2f} MB\n"
+                f"  Available: {storage_limit_mb - storage_used_mb:.2f} MB\n\n"
+                f"🔔 Notifications:\n"
+                f"  Webhook: {webhook}\n\n"
+                f"🕐 Account Dates:\n"
+                f"  Created: {profile.createdAt or 'Unknown'}\n"
+                f"  Updated: {profile.updatedAt or 'Unknown'}"
+            )
+
+            return [
+                TextContent(
+                    type="text",
+                    text=profile_info,
+                )
+            ]
+
         else:
             return [
                 TextContent(
@@ -732,38 +831,112 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         # Log full error internally
         logger.error(f"HTTP error executing tool {name}: {e.response.status_code} - {e.response.text}", exc_info=True)
 
-        # Return sanitized error to user
+        # Return helpful error messages with hints
         status_code = e.response.status_code
         if status_code == 401:
-            error_msg = "Authentication failed. Please check your username and password."
+            error_msg = (
+                "Authentication failed. Please check your username and password.\n\n"
+                "💡 Hint: Verify credentials in environment variables or .env file:\n"
+                "   - DONETICK_BASE_URL\n"
+                "   - DONETICK_USERNAME\n"
+                "   - DONETICK_PASSWORD"
+            )
         elif status_code == 403:
-            error_msg = "Permission denied. This operation may require Donetick Plus membership."
+            error_msg = (
+                "Permission denied. This operation may require Donetick Plus membership.\n\n"
+                "💡 Hint: Operations like complete_chore, update_chore, and get_circle_members\n"
+                "   require a Premium/Plus subscription."
+            )
         elif status_code == 404:
-            error_msg = "Resource not found."
+            if "chore" in name:
+                error_msg = (
+                    "Chore not found.\n\n"
+                    "💡 Hint: Use list_chores to see available chores and their IDs.\n"
+                    "   Chores may have been deleted or the ID may be incorrect."
+                )
+            elif "label" in name:
+                error_msg = (
+                    "Label not found.\n\n"
+                    "💡 Hint: Use list_labels to see available labels and their IDs.\n"
+                    "   Labels may have been deleted or the ID may be incorrect."
+                )
+            else:
+                error_msg = "Resource not found."
+        elif status_code == 422:
+            error_msg = (
+                "Validation error. The API rejected the request parameters.\n\n"
+                "💡 Hint: Common issues:\n"
+                "   - Invalid date format (use YYYY-MM-DD or RFC3339)\n"
+                "   - Invalid frequency_type (use: once, daily, weekly, days_of_the_week, etc.)\n"
+                "   - Missing required fields (name, due_date for some operations)\n"
+                "   - Invalid user or label IDs (use get_circle_members or list_labels first)"
+            )
         elif status_code == 429:
-            error_msg = "Rate limit exceeded. Please try again later."
+            error_msg = (
+                "Rate limit exceeded. The server is receiving too many requests.\n\n"
+                "💡 Hint: Wait a few seconds before retrying. The rate limit is\n"
+                "   typically 10 requests per second."
+            )
         elif 400 <= status_code < 500:
-            error_msg = f"Request failed with status {status_code}. Please check your input."
+            error_msg = (
+                f"Request failed with status {status_code}. Please check your input.\n\n"
+                "💡 Hint: Review the tool's input parameters and ensure:\n"
+                "   - Required fields are provided\n"
+                "   - Data types match expectations (IDs are integers, names are strings)\n"
+                "   - Values are in correct format (dates, colors, etc.)"
+            )
         else:
-            error_msg = f"API request failed with status {status_code}."
+            error_msg = (
+                f"API request failed with status {status_code}.\n\n"
+                "💡 Hint: This is likely a server-side issue. Try again in a moment.\n"
+                "   If the problem persists, check the Donetick server status."
+            )
 
         return [TextContent(type="text", text=f"Error: {error_msg}")]
 
     except httpx.TimeoutException as e:
         logger.error(f"Timeout executing tool {name}: {e}", exc_info=True)
-        return [TextContent(type="text", text="Error: Request timed out. Please try again.")]
+        return [TextContent(
+            type="text",
+            text=(
+                "Error: Request timed out.\n\n"
+                "💡 Hint: The Donetick server took too long to respond. This could mean:\n"
+                "   - The server is under heavy load\n"
+                "   - Network connectivity issues\n"
+                "   - The server may be down\n"
+                "Try again in a few moments."
+            )
+        )]
 
     except ValueError as e:
         # Validation errors (safe to expose)
         logger.warning(f"Validation error in tool {name}: {e}")
-        return [TextContent(type="text", text=f"Validation Error: {str(e)}")]
+        return [TextContent(
+            type="text",
+            text=(
+                f"Validation Error: {str(e)}\n\n"
+                "💡 Hint: This is a data validation error. Check that:\n"
+                "   - All required parameters are provided\n"
+                "   - Data types are correct (numbers as integers, text as strings)\n"
+                "   - Values are in expected format (dates, emails, URLs, etc.)"
+            )
+        )]
 
     except Exception as e:
         # Log full error internally
         logger.error(f"Unexpected error executing tool {name}: {e}", exc_info=True)
 
         # Return generic error to user (don't leak internals)
-        return [TextContent(type="text", text="Error: An unexpected error occurred while processing your request.")]
+        return [TextContent(
+            type="text",
+            text=(
+                "Error: An unexpected error occurred while processing your request.\n\n"
+                "💡 Hint: This is an internal error. Please:\n"
+                "   - Check the server logs for details\n"
+                "   - Try the operation again\n"
+                "   - If the problem persists, report it as a bug"
+            )
+        )]
 
 
 async def cleanup():

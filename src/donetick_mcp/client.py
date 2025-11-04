@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 from .config import config
-from .models import Chore, ChoreCreate, ChoreUpdate, CircleMember, Label
+from .models import Chore, ChoreCreate, ChoreUpdate, CircleMember, Label, User, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -620,6 +620,52 @@ class DonetickClient:
                     break
 
         return label_map
+
+    async def list_users(self) -> list[User]:
+        """
+        List all users in the circle.
+
+        Returns:
+            List of User objects
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails
+        """
+        logger.debug("Listing all circle users")
+
+        response = await self._request("GET", "/api/v1/users/")
+        users_data = response.json()
+
+        # Handle both array and object response formats
+        if isinstance(users_data, dict):
+            users_data = users_data.get("users", users_data.get("res", []))
+
+        users = [User(**user_data) for user_data in users_data]
+        logger.info(f"Retrieved {len(users)} users from circle")
+        return users
+
+    async def get_user_profile(self) -> UserProfile:
+        """
+        Get the current user's detailed profile.
+
+        Returns:
+            UserProfile object with complete user information
+
+        Raises:
+            httpx.HTTPStatusError: If the API request fails
+        """
+        logger.debug("Getting current user profile")
+
+        response = await self._request("GET", "/api/v1/users/profile")
+        profile_data = response.json()
+
+        # Handle both direct object and wrapped response
+        if isinstance(profile_data, dict) and "res" in profile_data:
+            profile_data = profile_data["res"]
+
+        profile = UserProfile(**profile_data)
+        logger.info(f"Retrieved profile for user: {profile.username} (ID: {profile.id})")
+        return profile
 
     def transform_frequency_metadata(
         self,

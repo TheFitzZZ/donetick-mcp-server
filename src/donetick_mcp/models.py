@@ -369,6 +369,52 @@ class CircleMember(BaseModel):
     pointsRedeemed: Optional[int] = Field(0, description="Points redeemed")
 
 
+class User(BaseModel):
+    """User model for circle members."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int = Field(..., description="User ID")
+    username: str = Field(..., description="Username")
+    displayName: Optional[str] = Field(None, description="Display name")
+    email: Optional[str] = Field(None, description="Email address")
+    role: Optional[str] = Field(None, description="User role in circle")
+    circleId: Optional[int] = Field(None, description="Primary circle ID")
+    image: Optional[str] = Field(None, description="Profile image URL")
+    points: Optional[int] = Field(0, description="Total points earned")
+    pointsRedeemed: Optional[int] = Field(0, description="Points redeemed")
+    isActive: Optional[bool] = Field(True, description="Whether user is active")
+
+
+class UserProfile(BaseModel):
+    """Detailed user profile model."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int = Field(..., description="User ID")
+    username: str = Field(..., description="Username")
+    displayName: Optional[str] = Field(None, description="Display name")
+    email: Optional[str] = Field(None, description="Email address")
+    circleId: Optional[int] = Field(None, description="Primary circle ID")
+    image: Optional[str] = Field(None, description="Profile image URL")
+    points: Optional[int] = Field(0, description="Total points earned")
+    pointsRedeemed: Optional[int] = Field(0, description="Points redeemed")
+    isActive: Optional[bool] = Field(True, description="Whether user is active")
+    createdAt: Optional[str] = Field(None, description="Account creation timestamp")
+    updatedAt: Optional[str] = Field(None, description="Last update timestamp")
+    # Notification preferences
+    notificationTargets: Optional[dict[str, Any]] = Field(
+        None,
+        description="Notification target configuration"
+    )
+    webhook: Optional[str] = Field(None, description="Webhook URL for notifications")
+    # Storage and limits
+    storageUsed: Optional[int] = Field(0, description="Storage used in bytes")
+    storageLimit: Optional[int] = Field(0, description="Storage limit in bytes")
+    # Additional metadata
+    metadata: Optional[dict[str, Any]] = Field(None, description="Additional user metadata")
+
+
 class APIError(BaseModel):
     """API error response model."""
 

@@ -1,5 +1,10 @@
 # Donetick MCP Server
 
+[![PyPI version](https://badge.fury.io/py/donetick-mcp-server.svg)](https://pypi.org/project/donetick-mcp-server/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![GitHub](https://img.shields.io/badge/github-jason1365%2Fdonetick--mcp--server-blue?logo=github)](https://github.com/jason1365/donetick-mcp-server)
+
 A production-ready Model Context Protocol (MCP) server for [Donetick](https://donetick.com) chores management. Enables Claude and other MCP-compatible AI assistants to interact with your Donetick instance through a secure, rate-limited API.
 
 ## Breaking Changes in v2.0.0
@@ -21,7 +26,7 @@ See the [Migration Guide](MIGRATION.md) for detailed instructions.
 
 ## Features
 
-- **10 MCP Tools**: Complete chore management (list, get, create, complete, delete), label organization (list, create, update, delete), and circle member information
+- **13 MCP Tools**: Complete chore management (list, get, create, complete, delete), label organization (list, create, update, delete), circle member information, user management (list circle users, get user profile)
 - **Full Chore Configuration**: All 26+ fields now working including frequency metadata, rolling schedules, multiple assignees, assignment strategies, notifications, labels, priority, points, sub-tasks, and more
 - **JWT Authentication**: Automatic token management with transparent refresh
 - **Smart Caching**: Intelligent caching for get_chore operations (60s TTL by default)

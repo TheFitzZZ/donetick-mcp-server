@@ -140,12 +140,22 @@ The codebase follows a clean separation of concerns:
 - **Purpose**: Exposes Donetick functionality as MCP tools
 - **Transport**: stdio (for Claude Desktop integration)
 - **Global State**: Maintains a single `DonetickClient` instance
-- **Tools Exposed**:
-  - `list_chores`: List with filters (active status, assigned user)
-  - `get_chore`: Get by ID (uses direct GET endpoint, includes sub-tasks)
-  - `create_chore`: Create new chore (supports sub-tasks)
-  - `complete_chore`: Mark complete (Premium feature)
-  - `delete_chore`: Delete chore (creator only)
+- **Tools Exposed (13 tools)**:
+  - **Chore Management (5 tools)**:
+    - `list_chores`: List with filters (active status, assigned user)
+    - `get_chore`: Get by ID (uses direct GET endpoint, includes sub-tasks)
+    - `create_chore`: Create new chore (supports sub-tasks)
+    - `complete_chore`: Mark complete (Premium feature)
+    - `delete_chore`: Delete chore (creator only)
+  - **Label Management (4 tools)**:
+    - `list_labels`: List all labels in the circle
+    - `create_label`: Create new custom label
+    - `update_label`: Modify existing label
+    - `delete_label`: Remove label
+  - **Circle/User Management (3 tools)**:
+    - `get_circle_members`: Get circle members with roles and points
+    - `list_circle_users`: List all users in the circle
+    - `get_user_profile`: Get current user's detailed profile
 
 **Important**: The server uses a global client instance for connection pooling. Call `cleanup()` on shutdown to properly close resources.
 
