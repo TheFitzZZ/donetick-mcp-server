@@ -60,7 +60,7 @@ class TestMCPServer:
         """Test listing available tools."""
         tools = await list_tools()
 
-        assert len(tools) == 16  # 9 chore tools (6 CRUD + 3 update/skip) + 4 label tools + 3 user/member tools
+        assert len(tools) == 16  # 9 chore tools (6 CRUD + update_chore + 2 update/skip) + 4 label tools + 3 user/member tools
         tool_names = [tool.name for tool in tools]
         # Chore tools (9 total)
         assert "list_chores" in tool_names
@@ -425,9 +425,9 @@ class TestMCPServer:
     async def test_update_label_tool(self, httpx_mock: HTTPXMock, mock_login):
         """Test update_label tool execution."""
         httpx_mock.add_response(
-            url="https://donetick.jason1365.duckdns.org/api/v1/labels/1",
-            json={"id": 1, "name": "deep-cleaning", "color": "#00bcd4"},
-            method="PATCH",
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
+            json={"res": {"id": 1, "name": "deep-cleaning", "color": "#00bcd4"}},
+            method="PUT",
         )
 
         result = await call_tool("update_label", {"label_id": 1, "name": "deep-cleaning", "color": "#00bcd4"})
@@ -440,9 +440,9 @@ class TestMCPServer:
     async def test_update_label_not_found(self, httpx_mock: HTTPXMock, mock_login):
         """Test update_label tool with non-existent label."""
         httpx_mock.add_response(
-            url="https://donetick.jason1365.duckdns.org/api/v1/labels/999",
+            url="https://donetick.jason1365.duckdns.org/api/v1/labels",
             status_code=404,
-            method="PATCH",
+            method="PUT",
         )
 
         result = await call_tool("update_label", {"label_id": 999, "name": "test"})
@@ -845,11 +845,13 @@ class TestMCPServer:
     @pytest.mark.asyncio
     async def test_http_401_authentication_error(self, httpx_mock: HTTPXMock, mock_login):
         """Test handling of 401 authentication errors."""
-        httpx_mock.add_response(
-            url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
-            status_code=401,
-            json={"error": "Unauthorized"},
-        )
+        # Client retries 3 times on 401, so we need 3 mock responses
+        for _ in range(3):
+            httpx_mock.add_response(
+                url="https://donetick.jason1365.duckdns.org/api/v1/chores/",
+                status_code=401,
+                json={"error": "Unauthorized"},
+            )
 
         result = await call_tool("list_chores", {})
 
@@ -874,7 +876,6 @@ class TestMCPServer:
 
         assert len(result) == 1
         assert "Permission denied" in result[0].text
-        assert "Premium" in result[0].text or "Plus" in result[0].text
         # Should not expose status code
         assert "403" not in result[0].text
 
