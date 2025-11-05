@@ -1,8 +1,54 @@
-# Migration Guide: v1.x to v2.0.0
+# Migration Guides
+
+## Phase 1: Foundation Update (v0.4.0) - 2025-11-04
+
+**Status**: Completed
+**Type**: Non-breaking internal changes
+**Impact**: Minimal for existing users
+
+### What Changed
+
+Phase 1 completed the foundation work for the Donetick MCP Server:
+
+1. **API Endpoint Standardization**: All endpoints now use `/api/v1/` with proper trailing slashes
+   - Trailing slashes required for list endpoints: `GET /api/v1/chores/`
+   - Specialized update endpoints: `/priority`, `/assignee`, `/skip`
+
+2. **Field Casing Standardization**: Removed 26 unused PascalCase aliases
+   - Consistent camelCase throughout: `name`, `description`, `dueDate`, `createdBy`
+   - Simplified ChoreCreate model (was 50% larger with aliases)
+
+3. **Enhanced Testing**: Created live API integration test framework
+   - Mocked tests validate logic and error handling
+   - Live API tests verify endpoint routing and field casing
+   - Test markers (`@pytest.mark.live_api`) separate test types
+
+4. **Documentation Updates**: Updated CLAUDE.md and README.md
+   - Clear API endpoint documentation
+   - Trailing slash requirements explicitly noted
+   - New testing strategy section
+
+### No Breaking Changes for Users
+
+- All MCP tools work exactly the same
+- Configuration unchanged (credentials, environment variables)
+- API responses identical
+- Tool parameters and behavior unchanged
+
+### For Developers
+
+Update references in your code:
+- No code changes needed if using the MCP server
+- Internal implementation now cleaner and more maintainable
+- Live API testing available for development
+
+---
+
+## v1.x to v2.0.0 Migration Guide
 
 This guide helps you migrate from Donetick MCP Server v1.x to v2.0.0. The new version includes breaking changes that improve reliability and feature coverage.
 
-## Overview
+### Overview
 
 Version 2.0.0 introduces a fundamental change in how authentication works with the Donetick API, switching from the external API (eAPI) to the full API with JWT-based authentication. This change unlocks previously unavailable features and provides a more stable integration.
 

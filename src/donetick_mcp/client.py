@@ -10,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 import httpx
 
 from .config import config
-from .models import Chore, ChoreCreate, ChoreUpdate, CircleMember, Label, User, UserProfile
+from .models import Chore, ChoreCreate, ChoreDetail, ChoreHistory, ChoreUpdate, CircleMember, Label, User, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class TokenBucket:
 
 
 class DonetickClient:
-    """Async client for Donetick external API (eAPI)."""
+    """Async client for Donetick full API (api/v1)."""
 
     def __init__(
         self,
@@ -535,6 +535,101 @@ class DonetickClient:
         logger.info(f"Skipped chore {chore_id}, next due: {skipped_chore.nextDueDate}")
         return skipped_chore
 
+    async def get_chore_history(self, chore_id: int) -> list[ChoreHistory]:
+        """
+        Get completion history for a specific chore.
+
+        Returns all completion records for the given chore, including details
+        about when it was completed, by whom, and any notes.
+
+        Args:
+            chore_id: Chore ID to fetch history for
+
+        Returns:
+            List of ChoreHistory objects for the chore
+
+        Raises:
+            httpx.HTTPStatusError: On API errors
+        """
+        logger.info(f"Fetching history for chore {chore_id}")
+
+        data = await self._request("GET", f"/api/v1/chores/{chore_id}/history")
+
+        # API may return either direct array or wrapped response {'res': [...]}
+        history_list = data.get('res', data) if isinstance(data, dict) else data
+
+        if not isinstance(history_list, list):
+            logger.warning(f"Expected list for chore {chore_id} history, got {type(history_list)}")
+            history_list = []
+
+        # Parse response into ChoreHistory objects
+        history = [ChoreHistory(**entry_data) for entry_data in history_list]
+
+        logger.info(f"Retrieved {len(history)} history entries for chore {chore_id}")
+        return history
+
+    async def get_all_chores_history(self, limit: int = 50, offset: int = 0) -> list[ChoreHistory]:
+        """
+        Get completion history for all chores with pagination.
+
+        Returns completion records across all chores in the circle,
+        supporting pagination through limit and offset parameters.
+
+        Args:
+            limit: Maximum number of history entries to return (default: 50)
+            offset: Number of entries to skip for pagination (default: 0)
+
+        Returns:
+            List of ChoreHistory objects
+
+        Raises:
+            httpx.HTTPStatusError: On API errors
+        """
+        logger.info(f"Fetching all chores history (limit={limit}, offset={offset})")
+
+        params = {"limit": limit, "offset": offset}
+        data = await self._request("GET", "/api/v1/chores/history", params=params)
+
+        # API may return either direct array or wrapped response {'res': [...]}
+        history_list = data.get('res', data) if isinstance(data, dict) else data
+
+        if not isinstance(history_list, list):
+            logger.warning(f"Expected list for chores history, got {type(history_list)}")
+            history_list = []
+
+        # Parse response into ChoreHistory objects
+        history = [ChoreHistory(**entry_data) for entry_data in history_list]
+
+        logger.info(f"Retrieved {len(history)} history entries (limit={limit}, offset={offset})")
+        return history
+
+    async def get_chore_details(self, chore_id: int) -> ChoreDetail:
+        """
+        Get detailed chore information including statistics.
+
+        Returns extended chore details with completion statistics, history,
+        and analytics data not available in the standard get_chore endpoint.
+
+        Args:
+            chore_id: Chore ID to fetch details for
+
+        Returns:
+            ChoreDetail object with statistics and history
+
+        Raises:
+            httpx.HTTPStatusError: On API errors
+        """
+        logger.info(f"Fetching detailed information for chore {chore_id}")
+
+        data = await self._request("GET", f"/api/v1/chores/{chore_id}/details")
+
+        # API may return wrapped response {'res': {...}} or direct object
+        detail_data = data.get('res', data) if isinstance(data, dict) and 'res' in data else data
+
+        chore_detail = ChoreDetail(**detail_data)
+        logger.info(f"Retrieved details for chore {chore_id}: {chore_detail.name}")
+        return chore_detail
+
     async def get_circle_members(self) -> list[CircleMember]:
         """
         Get all members in the user's circle.
@@ -543,7 +638,7 @@ class DonetickClient:
             List of CircleMember objects
         """
         logger.info("Fetching circle members")
-        data = await self._request("GET", "/api/v1/circles/members")
+        data = await self._request("GET", "/api/v1/circles/members/")
 
         # API returns {'res': [...]} format
         members_data = data.get('res', data) if isinstance(data, dict) else data

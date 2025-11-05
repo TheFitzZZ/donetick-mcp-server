@@ -796,48 +796,48 @@ async def call_tool(name: str, arguments: Any) -> list[TextContent]:
             # ===== Build ChoreCreate Object =====
             chore_create = ChoreCreate(
                 # Basic Information
-                Name=arguments["name"],
-                Description=arguments.get("description"),
-                DueDate=due_date,
-                CreatedBy=arguments.get("created_by"),
+                name=arguments["name"],
+                description=arguments.get("description"),
+                dueDate=due_date,
+                createdBy=arguments.get("created_by"),
 
                 # Recurrence/Frequency
-                FrequencyType=frequency_type,
-                Frequency=arguments.get("frequency", 1),
-                FrequencyMetadata=frequency_metadata,
-                IsRolling=arguments.get("is_rolling", False),
+                frequencyType=frequency_type,
+                frequency=arguments.get("frequency", 1),
+                frequencyMetadata=frequency_metadata,
+                isRolling=arguments.get("is_rolling", False),
 
                 # User Assignment
-                AssignedTo=assigned_to,
-                Assignees=assignees,
-                AssignStrategy=arguments.get("assign_strategy", "least_completed"),
+                assignedTo=assigned_to,
+                assignees=assignees,
+                assignStrategy=arguments.get("assign_strategy", "least_completed"),
 
                 # Notifications
-                Notification=arguments.get("notification", bool(notification_metadata)),
-                NotificationMetadata=notification_metadata,
+                notification=arguments.get("notification", bool(notification_metadata)),
+                notificationMetadata=notification_metadata,
 
                 # Organization & Priority
-                Priority=arguments.get("priority"),
-                Labels=arguments.get("labels", []),
-                LabelsV2=labels_v2,
+                priority=arguments.get("priority"),
+                labels=arguments.get("labels", []),
+                labelsV2=labels_v2,
 
                 # Status & Visibility
-                IsActive=arguments.get("is_active", True),
-                IsPrivate=arguments.get("is_private", False),
+                isActive=arguments.get("is_active", True),
+                isPrivate=arguments.get("is_private", False),
 
                 # Gamification
-                Points=arguments.get("points"),
+                points=arguments.get("points"),
 
                 # Advanced Features
-                SubTasks=sub_tasks,
-                ThingChore=arguments.get("thing_chore"),
+                subTasks=sub_tasks,
+                thingChore=arguments.get("thing_chore"),
 
                 # Completion Settings
-                CompletionWindow=arguments.get("completion_window"),
-                RequireApproval=arguments.get("require_approval", False),
+                completionWindow=arguments.get("completion_window"),
+                requireApproval=arguments.get("require_approval", False),
 
                 # Advanced Scheduling
-                DeadlineOffset=arguments.get("deadline_offset"),
+                deadlineOffset=arguments.get("deadline_offset"),
             )
 
             chore = await client.create_chore(chore_create)

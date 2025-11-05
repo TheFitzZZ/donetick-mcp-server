@@ -182,12 +182,12 @@ The codebase follows a clean separation of concerns:
 
 All API interactions use Pydantic models for type safety:
 
-- **ChoreCreate**: For creating chores (uses PascalCase field names: `Name`, `Description`, `DueDate`, `CreatedBy`)
+- **ChoreCreate**: For creating chores (uses camelCase field names: `name`, `description`, `dueDate`, `createdBy`)
 - **ChoreUpdate**: For updating chores (uses camelCase: `name`, `description`, `nextDueDate`)
 - **Chore**: Complete chore model with all metadata
 - **CircleMember**: Circle/household member details
 
-**Critical Note**: The Donetick API uses inconsistent casing between create and update operations. ChoreCreate uses PascalCase while ChoreUpdate uses camelCase.
+**Consistency Note**: All operations use consistent camelCase field naming. The API accepts both PascalCase and camelCase, but we standardize on camelCase for consistency.
 
 #### 4. Configuration (config.py)
 
@@ -220,67 +220,111 @@ headers = {"Authorization": f"Bearer {jwt_token}"}
 - HTTPS required for all API calls
 - Certificate verification enforced
 
-### 2. API Endpoints (Full API vs eAPI)
+### 2. API Endpoints (Full API)
 Uses the Full API (not external API/eAPI):
 - **List Chores**: `GET /api/v1/chores/` (does NOT include sub-tasks)
 - **Get Chore**: `GET /api/v1/chores/{id}` (includes sub-tasks via Preload)
 - **Create Chore**: `POST /api/v1/chores/` (supports sub-tasks)
-- **Update Chore**: `PUT /api/v1/chores/` (Premium feature)
-- **Complete Chore**: `POST /api/v1/chores/{id}/do` (Premium feature)
+- **Update Chore**: `PUT /api/v1/chores/{id}` (basic fields: name, description, nextDueDate)
+- **Update Priority**: `PUT /api/v1/chores/{id}/priority` (change priority level)
+- **Update Assignee**: `PUT /api/v1/chores/{id}/assignee` (reassign to different user)
+- **Skip Chore**: `PUT /api/v1/chores/{id}/skip` (skip recurring without marking complete)
+- **Complete Chore**: `POST /api/v1/chores/{id}/do` (mark as complete)
 - **Delete Chore**: `DELETE /api/v1/chores/{id}`
-- **Get Members**: `GET /api/v1/circles/members/` (Premium feature)
+- **Get Members**: `GET /api/v1/circles/members/` (get circle members with roles)
 
-**Critical**: Note the trailing slashes and `/v1/` prefix - required for proper routing!
+**Critical**: Note the trailing slashes in list endpoints (`/api/v1/chores/`, `/api/v1/circles/members/`) and `/v1/` prefix - required for proper routing!
 
 ### 3. Field Name Consistency
-All operations now use camelCase consistently:
+All operations use camelCase consistently:
 - **Create**: camelCase (`name`, `description`, `dueDate`, `createdBy`)
 - **Update**: camelCase (`name`, `description`, `nextDueDate`)
 - **Response**: camelCase for all fields
 
-**Note**: This is a change from v1.x which used PascalCase for create operations.
+**API Flexibility**: The Donetick API accepts both PascalCase and camelCase in requests, but we standardize on camelCase for consistency and maintainability.
 
 ### 4. Date Format
 Accepts both formats:
 - ISO date: `2025-11-10`
 - RFC3339: `2025-11-10T00:00:00Z`
 
-### 5. All Features Now Available
-Unlike v1.x (eAPI), v0.2.0 (Full API) supports:
+### 5. All Features Supported
+The Full API (/api/v1/) supports all Donetick features:
 - Frequency metadata (specific days/times)
 - Rolling schedules
 - Multiple assignees
-- Assignment strategies
+- Assignment strategies (7 strategies supported)
 - Nagging notifications
 - Pre-due notifications
 - Private chores
 - Points/gamification
-- Priority levels (0-4)
+- Priority levels (0-4 range)
 - Completion window
 - Require approval
-- Labels
+- Labels (create, update, delete, assign)
 - **Sub-tasks** (checklist items with ordering and completion tracking)
 
-**Note**: Some operations (update, complete, circle members) require Premium/Plus membership.
+**Note**: All features are available through the full API. No Premium/Plus membership restrictions.
 
 ## Testing Strategy
 
-The test suite uses mocked HTTP responses (pytest-httpx) to avoid hitting the real API:
+The test suite uses multiple testing approaches:
 
-1. **Unit Tests** (test_client.py): Test each API method in isolation
-   - Rate limiting behavior
-   - Retry logic with exponential backoff
-   - Error handling (4xx, 5xx, timeouts)
-   - Direct GET endpoint for get_chore with caching
+### 1. Unit Tests (test_client.py)
+Test each API method in isolation with mocked HTTP responses:
+- Rate limiting behavior
+- Retry logic with exponential backoff
+- Error handling (4xx, 5xx, timeouts)
+- Direct GET endpoint for get_chore with caching
+- Field casing verification
+- Endpoint routing with trailing slashes
 
-2. **Integration Tests** (test_server.py): Test MCP tool execution
-   - Tool registration
-   - Tool invocation with various parameters
-   - Error responses
-   - JSON serialization
+**Running**: `pytest tests/test_client.py` (requires no Donetick instance)
 
-**Running Tests Without Real API**:
-Tests are fully mocked and don't require a Donetick instance. The `.env` file is not needed for testing.
+### 2. Integration Tests (test_server.py)
+Test MCP tool execution with mocked HTTP responses:
+- Tool registration and discovery
+- Tool invocation with various parameters
+- Error responses and handling
+- JSON serialization and response formatting
+
+**Running**: `pytest tests/test_server.py` (requires no Donetick instance)
+
+### 3. Live API Integration Tests (tests/integration/test_live_api.py)
+Test against a real Donetick instance to verify:
+- End-to-end chore operations (create, list, get, update, delete)
+- API endpoint correctness and trailing slash requirements
+- Field casing compatibility (both PascalCase and camelCase)
+- Response formats match expected schemas
+- Pagination and filtering functionality
+- Error handling with real API responses
+
+**Running Live Tests**:
+```bash
+# Requires .env file with Donetick credentials
+pytest tests/integration/test_live_api.py -v
+
+# Run only live tests
+pytest -m live_api
+
+# Run without live tests
+pytest -m "not live_api"
+```
+
+**Live Test Markers**: Tests marked with `@pytest.mark.live_api` require a real Donetick instance and are skipped in CI/CD by default.
+
+### Test Coverage
+
+**Full Mocked Suite** (no Donetick needed):
+- 85%+ code coverage
+- Fast execution (~2 seconds)
+- Safe to run in CI/CD
+
+**With Live API** (requires Donetick instance):
+- Additional coverage for API compatibility
+- Verifies endpoint routing and field casing
+- Validates response formats against real API
+- Recommended after major changes
 
 ## Common Development Tasks
 
@@ -376,12 +420,32 @@ Or for Python direct:
 - `src/donetick_mcp/server.py:153-252` - Tool handlers
 - `src/donetick_mcp/client.py:118-199` - HTTP retry logic
 - `src/donetick_mcp/client.py:17-56` - Token bucket rate limiter
-- `src/donetick_mcp/models.py:29-48` - ChoreCreate model (note PascalCase)
-- `src/donetick_mcp/models.py:68-136` - Complete Chore model
+- `src/donetick_mcp/models.py:31-170` - ChoreCreate model (camelCase fields)
+- `src/donetick_mcp/models.py:171-200` - ChoreUpdate model
+- `src/donetick_mcp/models.py:201-280` - Complete Chore model
 - `tests/test_client.py` - Client unit tests with mocked HTTP
 - `tests/test_server.py` - MCP server integration tests
+- `tests/integration/test_live_api.py` - Live API integration tests
 
 ## Recent Enhancements
+
+### v0.4.0 - Phase 1 Foundation Complete
+
+**Phase 1 Migration Completed (2025-11-04)**:
+- **Verified field casing**: API accepts both PascalCase and camelCase; we standardize on camelCase
+- **Full API migration**: Migrated all endpoints from eAPI to /api/v1/ with proper trailing slashes
+- **Trailing slash enforcement**: All list endpoints (`/api/v1/chores/`, `/api/v1/circles/members/`) now include trailing slashes
+- **Removed unused aliases**: Removed 26 unused PascalCase field aliases from ChoreCreate model
+- **Enhanced endpoint documentation**: Clarified endpoint routing with trailing slash requirements
+- **Live API test framework**: Created comprehensive live API integration tests for validation
+- **Updated documentation**: CLAUDE.md and README.md now reflect full API usage
+
+**Key Changes**:
+- All ChoreCreate fields use camelCase: `name`, `description`, `dueDate`, `createdBy`, etc.
+- Endpoints use `/api/v1/` prefix consistently
+- List endpoints require trailing slashes: `GET /api/v1/chores/`, `GET /api/v1/circles/members/`
+- Update endpoints use specific paths: `/priority`, `/assignee`, `/skip`, `/do`
+- Full API supports all features (no Premium restriction language)
 
 ### v0.3.2 - Chore Update & Skip Operations
 

@@ -63,115 +63,96 @@ class ChoreCreate(BaseModel):
     # Basic Information
     name: str = Field(
         ...,
-        alias="Name",
         min_length=1,
         max_length=200,
         description="Chore name (required)"
     )
     description: Optional[str] = Field(
         None,
-        alias="Description",
         max_length=5000,
         description="Chore description"
     )
     dueDate: Optional[str] = Field(
         None,
-        alias="DueDate",
         description="Due date in RFC3339 or YYYY-MM-DD format",
     )
     createdBy: Optional[int] = Field(
         None,
-        alias="CreatedBy",
         description="User ID of creator"
     )
 
     # Recurrence/Frequency Settings
     frequencyType: Optional[str] = Field(
         default="once",
-        alias="FrequencyType",
         description="Frequency type: once, daily, weekly, monthly, yearly, interval_based",
     )
     frequency: Optional[int] = Field(
         default=1,
-        alias="Frequency",
         ge=0,
         description="Frequency value (e.g., 0=once, 1=weekly, 2=biweekly)",
     )
     frequencyMetadata: Optional[dict[str, Any]] = Field(
         default_factory=dict,
-        alias="FrequencyMetadata",
         description="Additional frequency configuration (e.g., days of week, time)",
     )
     isRolling: Optional[bool] = Field(
         default=False,
-        alias="IsRolling",
         description="Rolling schedule (next due date based on completion) vs fixed schedule",
     )
 
     # User Assignment
     assignedTo: Optional[int] = Field(
         None,
-        alias="AssignedTo",
         description="Primary assigned user ID"
     )
     assignees: Optional[list[dict[str, int]]] = Field(
         default_factory=list,
-        alias="Assignees",
         description="List of assignee objects with userId field",
     )
     assignStrategy: Optional[str] = Field(
         default="least_completed",
-        alias="AssignStrategy",
         description="Assignment strategy: least_completed, round_robin, random",
     )
 
     # Notifications
     notification: Optional[bool] = Field(
         default=False,
-        alias="Notification",
         description="Enable notifications for this chore"
     )
     notificationMetadata: Optional[dict[str, Any]] = Field(
         default=None,
-        alias="NotificationMetadata",
         description="Notification settings with templates array: [{value: int, unit: str}]",
     )
 
     # Organization & Priority
     priority: Optional[int] = Field(
         None,
-        alias="Priority",
         ge=0,
         le=4,
         description="Priority level (0=unset, 1=lowest, 4=highest)"
     )
     labels: Optional[list[str]] = Field(
         default_factory=list,
-        alias="Labels",
         description="Label tags for categorization (legacy - use labelsV2)"
     )
     labelsV2: Optional[list[dict[str, int]]] = Field(
         default_factory=list,
-        alias="LabelsV2",
         description="Label references - list of objects with 'id' field: [{'id': 1}, {'id': 2}]",
     )
 
     # Status & Visibility
     isActive: Optional[bool] = Field(
         default=True,
-        alias="IsActive",
         description="Active status (inactive chores are hidden)"
     )
     isPrivate: Optional[bool] = Field(
         default=False,
-        alias="IsPrivate",
         description="Private chore (visible only to creator)"
     )
 
     # Gamification
     points: Optional[int] = Field(
         None,
-        alias="Points",
         ge=0,
         description="Points awarded for completion"
     )
@@ -179,32 +160,27 @@ class ChoreCreate(BaseModel):
     # Advanced Features
     subTasks: Optional[list[dict[str, Any]]] = Field(
         default_factory=list,
-        alias="SubTasks",
         description="Sub-tasks/checklist items"
     )
     thingChore: Optional[dict[str, Any]] = Field(
         None,
-        alias="ThingChore",
         description="Thing/device association metadata"
     )
 
     # Completion Settings (NEW)
     completionWindow: Optional[int] = Field(
         None,
-        alias="CompletionWindow",
         ge=0,
         description="SECONDS before due time when chore can be completed early (e.g., 3600=1hr, 86400=1day)"
     )
     requireApproval: Optional[bool] = Field(
         default=False,
-        alias="RequireApproval",
         description="Requires approval to mark complete"
     )
 
     # Advanced Scheduling (NEW)
     deadlineOffset: Optional[int] = Field(
         None,
-        alias="DeadlineOffset",
         description="SECONDS after due time when deadline is reached (e.g., 3600=1hr grace, 86400=1day)"
     )
 
@@ -560,6 +536,150 @@ class UserProfile(BaseModel):
     storageLimit: Optional[int] = Field(0, description="Storage limit in bytes")
     # Additional metadata
     metadata: Optional[dict[str, Any]] = Field(None, description="Additional user metadata")
+
+
+class ChoreHistory(BaseModel):
+    """Model for chore completion history entry."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: int = Field(..., description="History record ID")
+    choreId: int = Field(..., description="Associated chore ID")
+    performedAt: str = Field(..., description="When the chore was performed (ISO 8601 datetime)")
+    completedBy: int = Field(..., description="User ID who completed the chore")
+    assignedTo: Optional[int] = Field(None, description="User ID the chore was assigned to")
+    note: Optional[str] = Field(None, max_length=5000, description="Completion note")
+    dueDate: Optional[str] = Field(None, description="Original due date (ISO 8601)")
+    status: str = Field(
+        default="completed",
+        description="Completion status: completed, skipped, missed, pending_approval"
+    )
+    points: Optional[int] = Field(None, ge=0, description="Points awarded for completion")
+    duration: Optional[int] = Field(None, ge=0, description="Time to completion in seconds")
+
+    @field_validator('performedAt')
+    @classmethod
+    def validate_performed_at(cls, v: str) -> str:
+        """Validate performedAt is in RFC3339 or ISO 8601 format."""
+        try:
+            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return v
+        except ValueError:
+            raise ValueError(
+                'performedAt must be in RFC3339 format (e.g., 2025-11-10T14:30:00Z) '
+                'or ISO 8601 format'
+            )
+
+    @field_validator('dueDate')
+    @classmethod
+    def validate_history_due_date(cls, v: Optional[str]) -> Optional[str]:
+        """Validate dueDate is in RFC3339 or ISO 8601 format."""
+        if v is None:
+            return v
+
+        try:
+            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return v
+        except ValueError:
+            raise ValueError(
+                'dueDate must be in RFC3339 format (e.g., 2025-11-10T00:00:00Z) '
+                'or ISO 8601 format'
+            )
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v: str) -> str:
+        """Validate history status value."""
+        valid_statuses = ['completed', 'skipped', 'missed', 'pending_approval']
+        if v.lower() not in valid_statuses:
+            raise ValueError(
+                f'status must be one of: {", ".join(valid_statuses)}'
+            )
+        return v.lower()
+
+
+class ChoreDetail(BaseModel):
+    """Extended chore model with statistics and completion history."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    # All base chore fields
+    id: int = Field(..., description="Chore ID")
+    name: str = Field(..., description="Chore name")
+    description: Optional[str] = Field(None, description="Chore description")
+    frequencyType: str = Field(..., description="Frequency type (once, daily, weekly, etc)")
+    frequency: int = Field(..., description="Frequency value")
+    frequencyMetadata: Optional[dict[str, Any]] = Field(None, description="Frequency metadata")
+    nextDueDate: Optional[str] = Field(None, description="Next due date (ISO 8601)")
+    isRolling: bool = Field(default=False, description="Is rolling schedule")
+    assignedTo: Optional[int] = Field(None, description="User ID of assigned user")
+    assignees: list[Assignee] = Field(default_factory=list, description="List of assignees")
+    assignStrategy: str = Field(
+        default="least_completed",
+        description="Assignment strategy",
+    )
+    isActive: bool = Field(default=True, description="Is chore active")
+    notification: bool = Field(default=False, description="Enable notifications")
+    notificationMetadata: Optional[NotificationMetadata] = Field(
+        None,
+        description="Notification settings",
+    )
+    labels: Optional[list[str]] = Field(None, description="Legacy labels")
+    labelsV2: list[Label] = Field(default_factory=list, description="Chore labels")
+    circleId: int = Field(..., description="Circle/household ID")
+    createdAt: str = Field(..., description="Creation timestamp (ISO 8601)")
+    updatedAt: str = Field(..., description="Last update timestamp (ISO 8601)")
+    createdBy: int = Field(..., description="Creator user ID")
+    updatedBy: Optional[int] = Field(None, description="Last updater user ID")
+    status: Optional[Any] = Field(None, description="Chore status (can be string or int)")
+    priority: Optional[int] = Field(None, ge=0, le=4, description="Priority (0=unset, 1=lowest, 4=highest)")
+    isPrivate: bool = Field(default=False, description="Is private chore")
+    points: Optional[int] = Field(None, description="Points awarded")
+    subTasks: list[Any] = Field(default_factory=list, description="Sub-tasks")
+    thingChore: Optional[dict[str, Any]] = Field(None, description="Thing chore metadata")
+    completionWindow: Optional[int] = Field(None, description="Days before/after due date for completion window")
+    requireApproval: Optional[bool] = Field(None, description="Requires approval to mark complete")
+    deadlineOffset: Optional[int] = Field(None, description="Offset in days for deadline calculation")
+
+    # Analytics and statistics fields
+    totalCompletedCount: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Total number of times this chore has been completed"
+    )
+    lastCompletedDate: Optional[str] = Field(
+        None,
+        description="Most recent completion timestamp (ISO 8601)"
+    )
+    lastCompletedBy: Optional[int] = Field(
+        None,
+        description="User ID who completed the chore most recently"
+    )
+    averageDuration: Optional[float] = Field(
+        None,
+        ge=0,
+        description="Average time to completion in seconds (from due date to completed date)"
+    )
+    completionHistory: Optional[list[ChoreHistory]] = Field(
+        default_factory=list,
+        description="List of completion history records for this chore"
+    )
+
+    @field_validator('lastCompletedDate')
+    @classmethod
+    def validate_last_completed_date(cls, v: Optional[str]) -> Optional[str]:
+        """Validate lastCompletedDate is in RFC3339 or ISO 8601 format."""
+        if v is None:
+            return v
+
+        try:
+            datetime.fromisoformat(v.replace('Z', '+00:00'))
+            return v
+        except ValueError:
+            raise ValueError(
+                'lastCompletedDate must be in RFC3339 format (e.g., 2025-11-10T14:30:00Z) '
+                'or ISO 8601 format'
+            )
 
 
 class APIError(BaseModel):

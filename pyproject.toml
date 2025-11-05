@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "donetick-mcp-server"
-version = "0.3.2"
+version = "0.3.3"
 description = "MCP server for Donetick chores management with JWT authentication, Full API support, and 16 MCP tools"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -57,6 +57,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --strict-markers"
+markers = [
+    "live_api: tests that interact with a real Donetick instance (run with: pytest -m live_api)",
+]
 
 [tool.ruff]
 line-length = 100

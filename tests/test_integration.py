@@ -386,7 +386,7 @@ class TestUserLookupAndAssignment:
         async with client:
             # STEP 1: Lookup users from circle
             httpx_mock.add_response(
-                url="https://test.donetick.com/api/v1/circles/members",
+                url="https://test.donetick.com/api/v1/circles/members/",
                 json={
                     "res": [
                         {

@@ -5,6 +5,65 @@ All notable changes to the Donetick MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3] - 2025-11-04
+
+### Added
+
+**Phase 1: Foundation Migration Complete**:
+- Verified and documented field casing (API accepts both camelCase/PascalCase, we use camelCase)
+- Completed migration from eAPI to full API (`/api/v1/` endpoints)
+- Added trailing slash to `/api/v1/circles/members/` endpoint
+- Removed 26 unused PascalCase aliases from ChoreCreate model
+- Updated all documentation to reflect camelCase-only approach
+
+**Live API Integration Testing Framework**:
+- Created comprehensive test structure in `tests/integration/`
+- 21 placeholder tests organized into 7 test classes
+- Added `live_api` pytest marker for test isolation
+- Automatic test data cleanup with fixtures
+- Documentation in `tests/integration/README.md`
+
+**Phase 2: History & Analytics (Partial)**:
+- Added `ChoreHistory` model with 10 fields for completion tracking
+- Added `ChoreDetail` model extending Chore with analytics (totalCompletedCount, lastCompletedDate, averageDuration, etc.)
+- Implemented 3 new client methods:
+  - `get_chore_history(chore_id)` - Get completion history for specific chore
+  - `get_all_chores_history(limit, offset)` - Get history across all chores with pagination
+  - `get_chore_details(chore_id)` - Get chore with detailed statistics
+
+**Configuration**:
+- Updated `.env.example` with testing credentials section
+- Added optional `DONETICK_TEST_USER_ID` for live API testing
+- Added optional PyPI token placeholders for maintainers
+
+### Changed
+
+- Version bumped from 0.3.2 to 0.4.0
+- Updated project description to include "history tracking"
+- Fixed 5 test failures from API migration
+- Fixed 27 test errors from duplicate test names and endpoint mismatches
+- All 199 unit tests now passing
+
+### Fixed
+
+- Endpoint URL mismatches (trailing slashes)
+- Rate limit test timeout issues
+- Server error test assertions
+- Moved `mock_login` fixture to conftest.py for reusability
+
+### Documentation
+
+- Updated CLAUDE.md with Phase 1 completion details
+- Updated README.md with new features and API documentation section
+- Added Phase 1 section to MIGRATION.md
+- Corrected all references to field casing and API endpoints
+
+### Internal
+
+- Test infrastructure improvements with better fixtures
+- Comprehensive documentation in `tmp/` for development reference
+- All background test processes completed successfully
+
 ## [2.0.0] - 2025-11-03
 
 ### BREAKING CHANGES

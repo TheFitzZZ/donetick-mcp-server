@@ -9,8 +9,11 @@ A production-ready Model Context Protocol (MCP) server for [Donetick](https://do
 
 ## Features
 
-- **13 MCP Tools**: Complete chore management (list, get, create, complete, delete), label organization (list, create, update, delete), circle member information, user management (list circle users, get user profile)
-- **Full Chore Configuration**: All 26+ fields now working including frequency metadata, rolling schedules, multiple assignees, assignment strategies, notifications, labels, priority, points, sub-tasks, and more
+- **16 MCP Tools**: Complete chore management (list, get, create, complete, update, delete, skip), label organization (list, create, update, delete), circle member information, user management (list circle users, get user profile)
+- **Full API Integration**: Uses Donetick Full API (/api/v1/) with all endpoints properly configured with trailing slashes
+- **Complete Field Support**: All 26+ chore creation fields working including frequency metadata, rolling schedules, multiple assignees, assignment strategies, notifications, labels, priority, points, sub-tasks, and more
+- **Consistent Field Casing**: camelCase fields throughout (name, description, dueDate, createdBy, etc.)
+- **Specialized Update Tools**: Update chore details, priority, and assignee with dedicated endpoints
 - **JWT Authentication**: Automatic token management with transparent refresh
 - **Smart Caching**: Intelligent caching for get_chore operations (60s TTL by default)
 - **Rate Limiting**: Token bucket algorithm prevents API overload
@@ -19,7 +22,7 @@ A production-ready Model Context Protocol (MCP) server for [Donetick](https://do
 - **Input Validation**: Pydantic field validators with sanitization
 - **Security Hardened**: HTTPS enforcement, sanitized logging, secure error messages, JWT token security
 - **Docker Support**: Containerized deployment with security best practices
-- **Comprehensive Testing**: Unit and integration tests with pytest
+- **Comprehensive Testing**: Mocked unit/integration tests + live API test framework with pytest
 - **Type Safety**: Pydantic models for request/response validation
 
 ## Quick Start
@@ -392,11 +395,12 @@ The server implements a token bucket rate limiter to prevent API overload:
 
 ### Running Tests
 
+**Mocked Tests** (fast, no Donetick instance required):
 ```bash
 # Install dev dependencies
 pip install -e ".[dev]"
 
-# Run all tests
+# Run all tests (unit + integration with mocks)
 pytest
 
 # Run with coverage
@@ -404,10 +408,29 @@ pytest --cov=donetick_mcp --cov-report=html
 
 # Run specific test file
 pytest tests/test_client.py
+pytest tests/test_server.py
 
 # Run with verbose output
 pytest -v
 ```
+
+**Live API Tests** (requires Donetick instance):
+```bash
+# Create .env file with credentials (see Configuration section)
+# Then run live API integration tests
+pytest tests/integration/test_live_api.py -v
+
+# Skip live tests
+pytest -m "not live_api"
+
+# Run only live tests
+pytest -m live_api
+```
+
+**Test Coverage Details**:
+- **Mocked tests** validate logic, retry behavior, rate limiting, error handling
+- **Live API tests** verify endpoint routing, field casing compatibility, response formats
+- **Full coverage** ensures both API client reliability and MCP tool correctness
 
 ### Project Structure
 
@@ -433,17 +456,39 @@ donetick-mcp-server/
 
 ## API Documentation
 
-This server uses the Donetick Full API with JWT authentication. Official documentation:
-- **API Docs**: https://docs.donetick.com/
-- **GitHub**: https://github.com/donetick/donetick
+This server uses the **Donetick Full API** (`/api/v1/`) with JWT authentication.
+
+### Official Resources
+
+- **Donetick Docs**: https://docs.donetick.com/
+- **Donetick GitHub**: https://github.com/donetick/donetick
+
+### API Architecture
+
+**Endpoints Used**:
+- **List Chores**: `GET /api/v1/chores/` (requires trailing slash)
+- **Get Chore**: `GET /api/v1/chores/{id}` (includes sub-tasks)
+- **Create Chore**: `POST /api/v1/chores/`
+- **Update Chore**: `PUT /api/v1/chores/{id}` (name, description, nextDueDate)
+- **Update Priority**: `PUT /api/v1/chores/{id}/priority`
+- **Update Assignee**: `PUT /api/v1/chores/{id}/assignee`
+- **Skip Chore**: `PUT /api/v1/chores/{id}/skip`
+- **Complete Chore**: `POST /api/v1/chores/{id}/do`
+- **Delete Chore**: `DELETE /api/v1/chores/{id}`
+- **Get Members**: `GET /api/v1/circles/members/` (requires trailing slash)
+
+**Critical**: List endpoints require trailing slashes (`/api/v1/chores/`, `/api/v1/circles/members/`). This is handled automatically by the client.
 
 ### Important Notes
 
-1. **Authentication**: Uses JWT Bearer tokens (automatically managed)
-2. **Full Feature Support**: All 26+ chore creation fields now working
-3. **Automatic Token Refresh**: JWT tokens refreshed transparently
-4. **Circle Scoped**: All operations are scoped to your circle (household/team)
-5. **No Premium Required**: Advanced features work with standard accounts
+1. **Full API Used**: Not the external API (eAPI) - uses internal Full API
+2. **Field Casing**: Consistent camelCase throughout (name, description, dueDate, createdBy)
+3. **Trailing Slashes**: List endpoints include trailing slashes for proper routing
+4. **Authentication**: JWT Bearer tokens with automatic management
+5. **Complete Feature Support**: All 26+ chore creation fields available
+6. **Automatic Token Refresh**: JWT tokens refreshed transparently
+7. **Circle Scoped**: All operations scoped to your circle (household/team)
+8. **No Premium Restrictions**: All features available through full API
 
 ## Troubleshooting
 
