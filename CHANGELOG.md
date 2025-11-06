@@ -5,6 +5,47 @@ All notable changes to the Donetick MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6] - 2025-11-05
+
+### Fixed
+- **Critical bug**: `update_chore()` method now preserves assignee fields during updates
+  - Previously removed `assignees` and `assignedTo` fields from update payloads, causing chores to lose assignments when updating unrelated fields (recurrence, due date, etc.)
+  - Now aligns with UI behavior by preserving all business logic fields
+  - Only removes server-generated metadata: `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `circleId`, `status`
+
+### Changed
+- Introduced `FIELDS_TO_REMOVE` constant for consistent field filtering across all update methods
+- Updated `update_chore()` and `update_chore_assignee()` to use shared constant
+- Fixed test mocks to match new fetch-modify-send pattern
+
+### Added
+- Comprehensive payload comparison analysis in `tmp/payload_comparison_analysis.md`
+- Documented UI vs MCP server behavior differences for 5 operations
+
+## [0.3.5] - 2025-11-05
+
+### Added
+- `update_subtask_completion` tool for marking individual subtasks complete/incomplete
+- `detail_level` parameter to `list_chores` tool (brief/full response formats)
+- Progress tracking with visual indicators (✅/⬜) and percentage completion
+- Comprehensive unit tests for subtask management
+
+### Changed
+- Tool count increased from 16 to 20 (10 chore + 4 label + 3 user + 3 history)
+- Updated pyproject.toml description to reflect 20 tools
+- Updated CLAUDE.md with new tool descriptions
+
+## [0.3.4] - 2025-11-04
+
+### Added
+- `get_chore_history` tool - Get completion history for a specific chore
+- `get_all_chores_history` tool - Get completion history across all chores with pagination
+- `get_chore_details` tool - Get detailed statistics and analytics for a chore
+- MCP server handlers for all 3 history/analytics tools
+
+### Changed
+- Tool count increased from 16 to 19
+
 ## [0.3.3] - 2025-11-04
 
 ### Added

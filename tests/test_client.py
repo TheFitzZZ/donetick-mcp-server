@@ -257,11 +257,24 @@ class TestDonetickClient:
     @pytest.mark.asyncio
     async def test_update_chore_assignee(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test reassigning a chore to different user."""
-        updated_chore = {**sample_chore_data, "assignedTo": 2}
+        # Mock GET to fetch current chore
         httpx_mock.add_response(
-            url="https://test.donetick.com/api/v1/chores/1/assignee",
-            json=updated_chore,
+            url="https://test.donetick.com/api/v1/chores/1",
+            json={"res": sample_chore_data},
+            method="GET",
+        )
+        # Mock PUT to update chore
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/chores/",
+            json={"message": "Chore added successfully"},
             method="PUT",
+        )
+        # Mock GET to fetch updated chore
+        updated_chore = {**sample_chore_data, "assignedTo": 2, "assignees": [{"userId": 2}]}
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/chores/1",
+            json={"res": updated_chore},
+            method="GET",
         )
 
         async with client:
@@ -297,12 +310,25 @@ class TestDonetickClient:
                 {"id": 2, "name": "Task 2", "orderId": 1, "completedAt": None, "completedBy": 0},
             ]
         }
+        # First GET: update_subtask_completion fetches current chore
         httpx_mock.add_response(
             url="https://test.donetick.com/api/v1/chores/1",
-            json=chore_with_subtasks,
+            json={"res": chore_with_subtasks},
+        )
+        # Second GET: update_chore fetches current chore
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/chores/1",
+            json={"res": chore_with_subtasks},
         )
 
-        # Mock the update response with completed subtask
+        # Mock PUT response (returns message)
+        httpx_mock.add_response(
+            url="https://test.donetick.com/api/v1/chores/",
+            json={"message": "Chore added successfully"},
+            method="PUT",
+        )
+
+        # Third GET: update_chore fetches updated chore to return
         updated_chore = {
             **sample_chore_data,
             "subTasks": [
@@ -311,9 +337,8 @@ class TestDonetickClient:
             ]
         }
         httpx_mock.add_response(
-            url="https://test.donetick.com/api/v1/chores/",
-            json=updated_chore,
-            method="PUT",
+            url="https://test.donetick.com/api/v1/chores/1",
+            json={"res": updated_chore},
         )
 
         async with client:
@@ -1078,30 +1103,6 @@ class TestDonetickClient:
             chores = await client.list_chores()
 
         assert len(chores) == 1
-
-    @pytest.mark.asyncio
-    async def test_cache_clear(self, client, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
-        """Test cache clearing functionality."""
-        # First fetch - adds to cache
-        httpx_mock.add_response(
-            url="https://test.donetick.com/api/v1/chores/1",
-            json=sample_chore_data,
-        )
-
-        async with client:
-            chore1 = await client.get_chore(1)
-            assert chore1 is not None
-
-            # Clear cache
-            client.clear_cache()
-
-            # Should fetch again since cache was cleared
-            httpx_mock.add_response(
-                url="https://test.donetick.com/api/v1/chores/1",
-                json=sample_chore_data,
-            )
-            chore2 = await client.get_chore(1)
-            assert chore2 is not None
 
     @pytest.mark.asyncio
     async def test_get_chore_history(self, httpx_mock: HTTPXMock, mock_login):

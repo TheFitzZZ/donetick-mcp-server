@@ -5,7 +5,7 @@ import json as json_lib
 import logging
 import random
 import time
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -13,6 +13,17 @@ from .config import config
 from .models import Chore, ChoreCreate, ChoreDetail, ChoreHistory, ChoreUpdate, CircleMember, Label, User, UserProfile
 
 logger = logging.getLogger(__name__)
+
+# Server-generated metadata fields that should be removed before update requests
+# These fields are added by the API in responses but should not be sent back in updates
+FIELDS_TO_REMOVE = [
+    "createdAt",
+    "updatedAt",
+    "createdBy",
+    "updatedBy",
+    "circleId",
+    "status",
+]
 
 
 class TokenBucket:
@@ -67,7 +78,6 @@ class DonetickClient:
         password: Optional[str] = None,
         rate_limit_per_second: Optional[float] = None,
         rate_limit_burst: Optional[int] = None,
-        cache_ttl: float = 60.0,
     ):
         """
         Initialize Donetick API client.
@@ -78,7 +88,6 @@ class DonetickClient:
             password: Donetick password (defaults to config)
             rate_limit_per_second: Rate limit in requests per second (defaults to config)
             rate_limit_burst: Maximum burst size (defaults to config)
-            cache_ttl: Cache time-to-live in seconds (default: 60.0)
         """
         self.base_url = (base_url or config.donetick_base_url).rstrip("/")
         self.username = username or config.donetick_username
@@ -88,10 +97,6 @@ class DonetickClient:
             rate=rate_limit_per_second or config.rate_limit_per_second,
             capacity=rate_limit_burst or config.rate_limit_burst,
         )
-
-        # Chore caching to optimize get_chore performance
-        self._chore_cache: Dict[int, Tuple[float, Chore]] = {}
-        self._cache_ttl = cache_ttl
 
         # Configure httpx client with connection pooling and timeouts
         self.client = httpx.AsyncClient(
@@ -316,7 +321,7 @@ class DonetickClient:
 
     async def get_chore(self, chore_id: int) -> Optional[Chore]:
         """
-        Get a specific chore by ID with caching.
+        Get a specific chore by ID.
 
         Uses GET /api/v1/chores/{id} endpoint which includes sub-tasks.
 
@@ -326,17 +331,7 @@ class DonetickClient:
         Returns:
             Chore object if found (including sub-tasks), None otherwise
         """
-        # Check cache
-        if chore_id in self._chore_cache:
-            timestamp, chore = self._chore_cache[chore_id]
-            if time.time() - timestamp < self._cache_ttl:
-                logger.debug(f"Cache hit for chore {chore_id}")
-                return chore
-            else:
-                logger.debug(f"Cache expired for chore {chore_id}")
-
-        # Cache miss or expired - fetch specific chore (includes sub-tasks!)
-        logger.info(f"Fetching chore {chore_id} directly (includes sub-tasks)")
+        logger.info(f"Fetching chore {chore_id} (includes sub-tasks)")
 
         try:
             data = await self._request("GET", f"/api/v1/chores/{chore_id}")
@@ -344,9 +339,6 @@ class DonetickClient:
             # API returns {'res': chore} format, unwrap it
             chore_data = data.get('res', data) if isinstance(data, dict) else data
             chore = Chore(**chore_data)
-
-            # Cache the result
-            self._chore_cache[chore_id] = (time.time(), chore)
 
             logger.info(f"Found chore {chore_id}: {chore.name}")
             return chore
@@ -356,11 +348,6 @@ class DonetickClient:
                 logger.warning(f"Chore {chore_id} not found")
                 return None
             raise
-
-    def clear_cache(self):
-        """Clear the chore cache."""
-        self._chore_cache.clear()
-        logger.debug("Chore cache cleared")
 
     async def create_chore(self, chore: ChoreCreate) -> Chore:
         """
@@ -424,13 +411,8 @@ class DonetickClient:
         # Ensure ID is in the payload
         chore_dict["id"] = chore_id
 
-        # Clean up fields that might cause validation issues
-        # Remove fields that can cause validation errors or contain stale data
-        fields_to_remove = [
-            "createdAt", "updatedAt", "createdBy", "updatedBy",
-            "circleId", "status", "assignees", "assignedTo"
-        ]
-        for field in fields_to_remove:
+        # Remove server-generated metadata fields
+        for field in FIELDS_TO_REMOVE:
             chore_dict.pop(field, None)
 
         # Clean up labels - remove created_by if null
@@ -544,15 +526,55 @@ class DonetickClient:
 
         Returns:
             Updated Chore object
+
+        Note:
+            Uses the generic PUT /api/v1/chores/ endpoint with the full chore object.
+            The specialized /assignee endpoint does not exist in the API.
         """
         logger.info(f"Reassigning chore {chore_id} to user {user_id}")
+
+        # Fetch current chore to get full object
+        current_chore = await self.get_chore(chore_id)
+        if current_chore is None:
+            raise ValueError(f"Chore {chore_id} not found")
+
+        # Convert to dict and update assignee fields
+        chore_dict = current_chore.model_dump(exclude_none=True)
+        chore_dict["id"] = chore_id
+        chore_dict["assignedTo"] = user_id
+        chore_dict["assignees"] = [{"userId": user_id}]
+
+        # If no strategy is set, use default
+        if not chore_dict.get("assignStrategy"):
+            chore_dict["assignStrategy"] = "least_completed"
+
+        # Remove server-generated metadata fields
+        for field in FIELDS_TO_REMOVE:
+            chore_dict.pop(field, None)
+
+        # Clean up labels - remove created_by if null
+        if "labelsV2" in chore_dict and chore_dict["labelsV2"]:
+            for label in chore_dict["labelsV2"]:
+                if "created_by" in label and label["created_by"] is None:
+                    label.pop("created_by")
+
+        # Send update
         data = await self._request(
             "PUT",
-            f"/api/v1/chores/{chore_id}/assignee",
-            json={"userId": user_id},
+            "/api/v1/chores/",
+            json=chore_dict,
         )
 
-        updated_chore = Chore(**data)
+        # API returns {"message": "Chore added successfully"} instead of the chore object
+        # Fetch the updated chore to return it
+        if "message" in data:
+            logger.info(f"Update API response: {data.get('message')}")
+            updated_chore = await self.get_chore(chore_id)
+            if updated_chore is None:
+                raise ValueError(f"Chore {chore_id} was updated but could not be retrieved")
+        else:
+            updated_chore = Chore(**data)
+
         logger.info(f"Reassigned chore {chore_id} to user {user_id}")
         return updated_chore
 
