@@ -1625,13 +1625,18 @@ def main():
     finally:
         # Cleanup with proper async handling
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(cleanup())
-            elif not loop.is_closed():
-                loop.run_until_complete(cleanup())
-            else:
-                # Create new loop for cleanup
+            # Try to get existing event loop, but handle case where there is none
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    loop.create_task(cleanup())
+                elif not loop.is_closed():
+                    loop.run_until_complete(cleanup())
+                else:
+                    # Loop exists but is closed - create new one
+                    asyncio.run(cleanup())
+            except RuntimeError:
+                # No event loop exists - create new one for cleanup
                 asyncio.run(cleanup())
         except Exception as e:
             cleanup_error = f"Cleanup error: {e}\n{traceback.format_exc()}"

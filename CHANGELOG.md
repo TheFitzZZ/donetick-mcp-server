@@ -5,6 +5,23 @@ All notable changes to the Donetick MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.13] - 2025-11-06
+
+### Fixed
+- **Critical: API returns incomplete frequencyMetadata**: Fixed "400 Invalid request format" when updating `days_of_the_week` chores
+  - Root cause: API returns partial frequencyMetadata (`days`, `time`, `weekPattern` only) but expects full format on updates
+  - API expects: `unit`, `timezone`, `days`, `time`, `weekPattern`, `occurrences`, `weekNumbers`
+  - API returns: `days`, `time`, `weekPattern` (missing `unit`, `timezone`, `occurrences`, `weekNumbers`)
+  - Fix: Now automatically adds missing `unit` and `timezone` fields when updating chores
+  - Default values: `unit="days"`, `timezone` extracted from time field or defaults to "America/New_York"/"UTC"
+- **Server cleanup error**: Fixed "There is no current event loop" error on server shutdown
+  - Added proper RuntimeError handling for Python 3.10+ async cleanup
+
+### Technical Details
+- Enhanced frequencyMetadata validation to add ALL required fields (client.py:447-486)
+- Server cleanup now handles missing event loop gracefully (server.py:1625-1644)
+- All 107 unit tests passing with fixes in place
+
 ## [0.3.12] - 2025-11-06
 
 ### Fixed

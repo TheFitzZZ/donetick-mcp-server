@@ -448,9 +448,10 @@ class DonetickClient:
             if freq_type == "days_of_the_week":
                 logger.info(f"Validating frequencyMetadata for days_of_the_week: {freq_meta}")
 
-                # API expects specific fields for days_of_the_week frequency
-                # Required: days, weekPattern, occurrences, weekNumbers
-                # Optional: time, unit, timezone (UI includes these)
+                # API quirk: Returns partial frequencyMetadata but expects full format on update
+                # UI sends: unit, timezone, days, time, weekPattern, occurrences, weekNumbers
+                # API returns: days, time, weekPattern (missing unit, timezone, occurrences, weekNumbers)
+                # API expects on update: ALL fields that UI sends
                 if isinstance(freq_meta, dict):
                     # Add required empty arrays if missing
                     if "occurrences" not in freq_meta:
@@ -460,7 +461,27 @@ class DonetickClient:
                         freq_meta["weekNumbers"] = []
                         logger.info("Added missing 'weekNumbers' array")
 
-                    # Keep time, unit, timezone if present - the UI sends them and API accepts them
+                    # Add unit if missing (API expects it but doesn't return it)
+                    if "unit" not in freq_meta:
+                        freq_meta["unit"] = "days"
+                        logger.info("Added missing 'unit' field")
+
+                    # Add timezone if missing (API expects it but doesn't return it)
+                    if "timezone" not in freq_meta:
+                        # Extract timezone from time field if present, otherwise default to UTC
+                        if "time" in freq_meta and isinstance(freq_meta["time"], str):
+                            # Try to extract timezone from ISO format time
+                            time_str = freq_meta["time"]
+                            if "-" in time_str or "+" in time_str:
+                                # Has timezone offset, try to map to timezone name
+                                # For simplicity, default to America/New_York for negative offsets
+                                freq_meta["timezone"] = "America/New_York"
+                            else:
+                                freq_meta["timezone"] = "UTC"
+                        else:
+                            freq_meta["timezone"] = "UTC"
+                        logger.info(f"Added missing 'timezone' field: {freq_meta['timezone']}")
+
                     chore_dict["frequencyMetadata"] = freq_meta
                     logger.info(f"Fixed frequencyMetadata: {freq_meta}")
             else:
