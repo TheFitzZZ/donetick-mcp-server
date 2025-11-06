@@ -5,6 +5,18 @@ All notable changes to the Donetick MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.9] - 2025-11-06
+
+### Fixed
+- **Critical: `update_chore` frequencyMetadata validation**: Fixed "400 Invalid request format" errors when updating chores with frequency metadata
+  - Now automatically adds required fields (`occurrences`, `weekNumbers`) if missing
+  - Removes unrecognized fields (`time`, `unit`, `timezone`) that cause API rejections
+  - Added debug logging to show final payload being sent to API
+  - Resolves issue where user-provided frequencyMetadata was being sent as-is without validation
+
+### Added
+- Debug logging in `update_chore` to show the final payload structure before sending to API
+
 ## [0.3.8] - 2025-11-06
 
 ### Fixed
