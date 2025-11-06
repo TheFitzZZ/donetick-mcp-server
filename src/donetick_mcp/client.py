@@ -1021,9 +1021,9 @@ class DonetickClient:
                 )
 
             metadata["days"] = normalized_days
-            metadata["unit"] = "days"
-            metadata["timezone"] = timezone
             metadata["weekPattern"] = "every_week"
+            metadata["occurrences"] = []
+            metadata["weekNumbers"] = []
 
         # Handle time
         if time:

@@ -142,8 +142,7 @@ class TestFullChoreLifecycle:
                 },
             )
 
-            # Clear cache to force fresh fetch
-            client.clear_cache()
+            # Fetch fresh data (no caching)
             fetched_chore = await client.get_chore(1)
 
             assert fetched_chore is not None
@@ -222,8 +221,7 @@ class TestFullChoreLifecycle:
                 status_code=404,
             )
 
-            # Clear cache to force fresh fetch
-            client.clear_cache()
+            # Fetch fresh data (no caching)
             deleted_chore = await client.get_chore(1)
 
             assert deleted_chore is None
@@ -321,8 +319,7 @@ class TestLabelWorkflow:
                 },
             )
 
-            # Clear cache to force fresh fetch
-            client.clear_cache()
+            # Fetch fresh data (no caching)
             fetched_chore = await client.get_chore(5)
 
             assert fetched_chore is not None
@@ -359,8 +356,7 @@ class TestLabelWorkflow:
                 },
             )
 
-            # Clear cache to force fresh fetch
-            client.clear_cache()
+            # Fetch fresh data (no caching)
             chore_after_delete = await client.get_chore(5)
 
             assert chore_after_delete is not None

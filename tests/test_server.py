@@ -153,7 +153,7 @@ class TestMCPServer:
         assert "not found" in result[0].text.lower()
 
     @pytest.mark.asyncio
-    async def test_create_chore_tool(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+    async def test_create_chore_tool(self, sample_chore_data, httpx_mock: HTTPXMock):
         """Test create_chore tool execution."""
         # Mock POST response (API returns {'res': chore_id})
         httpx_mock.add_response(
@@ -182,7 +182,7 @@ class TestMCPServer:
         assert "Test Chore" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_create_chore_minimal(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+    async def test_create_chore_minimal(self, sample_chore_data, httpx_mock: HTTPXMock):
         """Test create_chore tool with only required fields."""
         # Mock POST response (API returns {'res': chore_id})
         httpx_mock.add_response(
@@ -246,7 +246,7 @@ class TestMCPServer:
         assert "Successfully deleted" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_update_chore_priority_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login, clear_cache):
+    async def test_update_chore_priority_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test update_chore_priority tool execution."""
         updated_chore = {**sample_chore_data, "priority": 4}
         httpx_mock.add_response(
@@ -270,7 +270,7 @@ class TestMCPServer:
         assert "Error" in result[0].text or "must be 0-4" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_update_chore_assignee_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login, clear_cache):
+    async def test_update_chore_assignee_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test update_chore_assignee tool execution."""
         updated_chore = {**sample_chore_data, "assignedTo": 2}
         httpx_mock.add_response(
@@ -286,7 +286,7 @@ class TestMCPServer:
         assert "user 2" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_skip_chore_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login, clear_cache):
+    async def test_skip_chore_tool(self, sample_chore_data, httpx_mock: HTTPXMock, mock_login):
         """Test skip_chore tool execution."""
         # For a recurring chore, skip schedules next occurrence
         updated_chore = {**sample_chore_data, "nextDueDate": "2025-11-17"}
@@ -724,7 +724,7 @@ class TestMCPServer:
         assert "create_label" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_create_chore_all_assignstrategies(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+    async def test_create_chore_all_assignstrategies(self, sample_chore_data, httpx_mock: HTTPXMock):
         """Test create_chore tool with all 7 assignment strategies."""
         strategies = [
             "least_completed",
@@ -764,7 +764,7 @@ class TestMCPServer:
             assert "Successfully created" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_create_chore_priority_validation(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+    async def test_create_chore_priority_validation(self, sample_chore_data, httpx_mock: HTTPXMock):
         """Test create_chore tool with priority 0-4 validation."""
         # Valid priorities: 0, 1, 2, 3, 4
         for priority in [0, 1, 2, 3, 4]:
@@ -805,7 +805,7 @@ class TestMCPServer:
         assert "Validation Error" in result[0].text or "Error" in result[0].text
 
     @pytest.mark.asyncio
-    async def test_create_chore_frequency_transformation(self, sample_chore_data, httpx_mock: HTTPXMock, clear_cache):
+    async def test_create_chore_frequency_transformation(self, sample_chore_data, httpx_mock: HTTPXMock):
         """Test create_chore tool frequency transformation from natural language to API format."""
         # Test days_of_week transformation
         httpx_mock.add_response(
@@ -891,7 +891,7 @@ class TestMCPServer:
         assert "404" not in result[0].text
 
     @pytest.mark.asyncio
-    async def test_http_422_validation_error(self, httpx_mock: HTTPXMock, mock_login, clear_cache):
+    async def test_http_422_validation_error(self, httpx_mock: HTTPXMock, mock_login):
         """Test handling of 422 validation errors."""
         # Pydantic validation will catch invalid dates before API call
         # So test with a valid date format but API rejects it

@@ -5,10 +5,27 @@ All notable changes to the Donetick MCP Server will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.7] - 2025-11-06
+
+### Fixed
+- `transform_frequency_metadata()` now correctly formats `days_of_the_week` schedules
+  - Previously sent extra fields (`unit`, `timezone`) not recognized by the API, causing days array to be ignored
+  - Now matches UI payload format exactly with `days`, `weekPattern`, `occurrences`, `weekNumbers`
+  - Chores with `frequency_type="days_of_the_week"` now properly save the selected days
+
+### Changed
+- Removed unused `unit` and `timezone` fields from `frequencyMetadata` output
+- Added required `occurrences` and `weekNumbers` empty arrays to match API expectations
+- Updated test `test_transform_frequency_metadata_mixed_case` to verify correct fields
+
+### Added
+- Comprehensive bug analysis documentation in `tmp/days_of_week_bug_analysis.md`
+- Debug script `tmp/debug_days_of_week.py` for testing frequency metadata transformation
+
 ## [0.3.6] - 2025-11-05
 
 ### Fixed
-- **Critical bug**: `update_chore()` method now preserves assignee fields during updates
+- `update_chore()` method now preserves assignee fields during updates
   - Previously removed `assignees` and `assignedTo` fields from update payloads, causing chores to lose assignments when updating unrelated fields (recurrence, due date, etc.)
   - Now aligns with UI behavior by preserving all business logic fields
   - Only removes server-generated metadata: `createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `circleId`, `status`

@@ -1007,8 +1007,9 @@ class TestDonetickClient:
 
         # All should be normalized to lowercase full names
         assert metadata["days"] == ["monday", "wednesday", "friday"]
-        assert metadata["unit"] == "days"
         assert metadata["weekPattern"] == "every_week"
+        assert metadata["occurrences"] == []
+        assert metadata["weekNumbers"] == []
 
     def test_transform_frequency_metadata_with_time(self, client):
         """Test frequency transform with time component."""

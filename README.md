@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![GitHub](https://img.shields.io/badge/github-jason1365%2Fdonetick--mcp--server-blue?logo=github)](https://github.com/jason1365/donetick-mcp-server)
 
-A production-ready Model Context Protocol (MCP) server for [Donetick](https://donetick.com) chores management. Enables Claude and other MCP-compatible AI assistants to interact with your Donetick instance through a secure, rate-limited API.
+A Model Context Protocol (MCP) server for [Donetick](https://donetick.com) chores management. Enables Claude and other MCP-compatible AI assistants to interact with your Donetick instance through a rate-limited API.
 
 ## Features
 
@@ -477,7 +477,7 @@ This server uses the **Donetick Full API** (`/api/v1/`) with JWT authentication.
 - **Delete Chore**: `DELETE /api/v1/chores/{id}`
 - **Get Members**: `GET /api/v1/circles/members/` (requires trailing slash)
 
-**Critical**: List endpoints require trailing slashes (`/api/v1/chores/`, `/api/v1/circles/members/`). This is handled automatically by the client.
+**Important**: List endpoints require trailing slashes (`/api/v1/chores/`, `/api/v1/circles/members/`). This is handled automatically by the client.
 
 ### Important Notes
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a production-ready Model Context Protocol (MCP) server for Donetick chores management. It enables Claude and other MCP-compatible AI assistants to interact with a Donetick instance through a secure, rate-limited API.
+This is a Model Context Protocol (MCP) server for Donetick chores management. It enables Claude and other MCP-compatible AI assistants to interact with a Donetick instance through a rate-limited API.
 
 **Key Technologies:**
 - Python 3.11+
@@ -238,7 +238,7 @@ Uses the Full API (not external API/eAPI):
 - **Delete Chore**: `DELETE /api/v1/chores/{id}`
 - **Get Members**: `GET /api/v1/circles/members/` (get circle members with roles)
 
-**Critical**: Note the trailing slashes in list endpoints (`/api/v1/chores/`, `/api/v1/circles/members/`) and `/v1/` prefix - required for proper routing!
+**Important**: Note the trailing slashes in list endpoints (`/api/v1/chores/`, `/api/v1/circles/members/`) and `/v1/` prefix - required for proper routing!
 
 **Update Chore Implementation Details**:
 The `update_chore` endpoint (`PUT /api/v1/chores/`) uses a non-RESTful pattern:
@@ -447,7 +447,7 @@ Or for Python direct:
 
 ## Recent Enhancements
 
-### v0.3.4 - Critical Update Chore Bug Fix
+### v0.3.4 - Update Chore Bug Fix
 
 **Bug Fix (2025-11-04)**:
 - **Fixed update_chore HTML response error**: The `update_chore` method was using the wrong API endpoint pattern, causing it to return HTML instead of JSON
@@ -502,7 +502,7 @@ Or for Python direct:
 - Specialized `update_chore_assignee` for assignment rotation
 - `skip_chore` for recurring chore management without completion
 
-### v0.3.1 - Critical Validation Improvements
+### v0.3.1 - Validation Improvements
 
 **New in v0.3.1** (Bug Fixes):
 - **Fixed priority range**: Now correctly 0-4 (was incorrectly 1-5)
