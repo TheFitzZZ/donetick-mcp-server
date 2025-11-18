@@ -57,6 +57,9 @@ docker-compose.override.yml
 
 # MCP
 *.mcp.json
+.playwright-mcp/
 
 # Temporary files for testing and analysis
 tmp/
+scripts/
+MIGRATION.md
