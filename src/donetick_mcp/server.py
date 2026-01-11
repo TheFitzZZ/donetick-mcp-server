@@ -1598,55 +1598,105 @@ async def run_stdio_server():
 
 async def run_sse_server():
     """Run the MCP server with SSE transport."""
+    import sys
+    import traceback
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
-    from starlette.routing import Mount, Route
-    from starlette.responses import JSONResponse
+    from starlette.routing import Route
+    from starlette.responses import JSONResponse, Response
     import uvicorn
 
+    print("DEBUG SSE: Initializing SSE server...", file=sys.stderr)
+    
     # Create SSE transport
-    sse = SseServerTransport("/messages/")
-
-    async def handle_sse(request):
-        """Handle SSE connections."""
-        async with sse.connect_sse(
-            request.scope, request.receive, request._send
-        ) as streams:
-            await app.run(
-                streams[0],
-                streams[1],
-                app.create_initialization_options()
-            )
-
-    async def handle_messages(request):
-        """Handle POST messages from SSE clients."""
-        await sse.handle_post_message(request.scope, request.receive, request._send)
+    # The endpoint path is what gets sent to clients for POSTing messages
+    sse = SseServerTransport("/messages")
+    print(f"DEBUG SSE: Created SseServerTransport with endpoint '/messages'", file=sys.stderr)
 
     async def health_check(request):
         """Health check endpoint."""
+        print("DEBUG SSE: Health check requested", file=sys.stderr)
         return JSONResponse({"status": "ok", "version": __version__})
 
+    # Create raw ASGI wrapper that captures scope/receive/send properly
+    class SSEEndpoint:
+        """ASGI app for SSE endpoint that properly captures send callable."""
+        
+        async def __call__(self, scope, receive, send):
+            """Handle SSE connection as raw ASGI."""
+            if scope["type"] != "http":
+                return
+                
+            client = scope.get("client", ("unknown", 0))
+            client_info = f"{client[0]}:{client[1]}"
+            path = scope.get("path", "")
+            method = scope.get("method", "GET")
+            
+            print(f"DEBUG SSE: {method} {path} from {client_info}", file=sys.stderr)
+            
+            try:
+                async with sse.connect_sse(scope, receive, send) as streams:
+                    print(f"DEBUG SSE: SSE streams established for {client_info}", file=sys.stderr)
+                    await app.run(
+                        streams[0],
+                        streams[1],
+                        app.create_initialization_options()
+                    )
+                print(f"DEBUG SSE: SSE connection closed normally for {client_info}", file=sys.stderr)
+            except Exception as e:
+                print(f"DEBUG SSE: Error in SSE connection from {client_info}: {e}", file=sys.stderr)
+                print(f"DEBUG SSE: Traceback: {traceback.format_exc()}", file=sys.stderr)
+                raise
+
+    class MessagesEndpoint:
+        """ASGI app for messages endpoint that properly captures send callable."""
+        
+        async def __call__(self, scope, receive, send):
+            """Handle message POST as raw ASGI."""
+            if scope["type"] != "http":
+                return
+                
+            client = scope.get("client", ("unknown", 0))
+            client_info = f"{client[0]}:{client[1]}"
+            query_string = scope.get("query_string", b"").decode()
+            
+            print(f"DEBUG SSE: Message POST from {client_info}, query: {query_string}", file=sys.stderr)
+            
+            try:
+                await sse.handle_post_message(scope, receive, send)
+                print(f"DEBUG SSE: Message handled successfully for {client_info}", file=sys.stderr)
+            except Exception as e:
+                print(f"DEBUG SSE: Error handling message from {client_info}: {e}", file=sys.stderr)
+                print(f"DEBUG SSE: Traceback: {traceback.format_exc()}", file=sys.stderr)
+                raise
+
     # Create Starlette app with routes
+    # Use Route with raw ASGI apps by wrapping them properly
+    print("DEBUG SSE: Creating Starlette app with routes:", file=sys.stderr)
+    print("DEBUG SSE:   - GET /health (health check)", file=sys.stderr)
+    print("DEBUG SSE:   - GET /sse (SSE connection - ASGI)", file=sys.stderr)
+    print("DEBUG SSE:   - POST /messages (message handling - ASGI)", file=sys.stderr)
+    
     starlette_app = Starlette(
-        debug=False,
+        debug=True,
         routes=[
             Route("/health", health_check, methods=["GET"]),
-            Route("/sse", handle_sse, methods=["GET"]),
-            Mount("/messages/", routes=[
-                Route("/", handle_messages, methods=["POST"]),
-            ]),
+            # For SSE and messages, we use raw ASGI apps
+            Route("/sse", SSEEndpoint()),
+            Route("/messages", MessagesEndpoint()),
         ],
     )
 
+    print(f"DEBUG SSE: Starting uvicorn on {config.sse_host}:{config.sse_port}", file=sys.stderr)
     logger.info(f"Starting SSE server on {config.sse_host}:{config.sse_port}")
     logger.info(f"SSE endpoint: http://{config.sse_host}:{config.sse_port}/sse")
 
-    # Run with uvicorn
+    # Run with uvicorn - use debug log level to see all details
     server_config = uvicorn.Config(
         starlette_app,
         host=config.sse_host,
         port=config.sse_port,
-        log_level=config.log_level.lower(),
+        log_level="debug",  # Force debug logging for troubleshooting
     )
     server = uvicorn.Server(server_config)
     await server.serve()
@@ -1658,7 +1708,7 @@ async def main_async():
     import os
 
     # Build identifier for debugging image versions
-    build_id = "BUILD-2026-01-11-SSE-A2"
+    build_id = "BUILD-2026-01-11-SSE-ASGI-A5"
 
     # Debug: Print raw environment variables
     raw_transport = os.getenv("MCP_TRANSPORT")
