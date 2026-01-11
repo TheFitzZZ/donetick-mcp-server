@@ -11,15 +11,13 @@ RUN apt-get update && \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy all files needed for installation
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -e .
-
-# Copy application code
-COPY src/ ./src/
+    pip install --no-cache-dir .
 
 # Create non-root user for security
 RUN useradd -m -u 1000 mcpuser && \
