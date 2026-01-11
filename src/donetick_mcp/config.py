@@ -22,6 +22,11 @@ class Config:
         self.rate_limit_per_second = float(os.getenv("RATE_LIMIT_PER_SECOND", "10.0"))
         self.rate_limit_burst = int(os.getenv("RATE_LIMIT_BURST", "10"))
 
+        # Transport configuration (stdio or sse)
+        self.transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+        self.sse_host = os.getenv("SSE_HOST", "0.0.0.0")
+        self.sse_port = int(os.getenv("SSE_PORT", "3000"))
+
         # Check for deprecated API token
         self.donetick_api_token = os.getenv("DONETICK_API_TOKEN")
 

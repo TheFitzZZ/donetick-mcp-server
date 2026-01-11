@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   donetick-mcp:
     build:
@@ -8,17 +6,22 @@ services:
     container_name: donetick-mcp-server
     image: donetick-mcp-server:latest
 
-    # Environment variables
+    # Environment variables (REQUIRED: DONETICK_BASE_URL, DONETICK_USERNAME, DONETICK_PASSWORD)
     environment:
-      - DONETICK_BASE_URL=${DONETICK_BASE_URL:-https://donetick.example.com}
-      - DONETICK_API_TOKEN=${DONETICK_API_TOKEN}
+      - DONETICK_BASE_URL=${DONETICK_BASE_URL}
+      - DONETICK_USERNAME=${DONETICK_USERNAME}
+      - DONETICK_PASSWORD=${DONETICK_PASSWORD}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - RATE_LIMIT_PER_SECOND=${RATE_LIMIT_PER_SECOND:-10.0}
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
+      # Transport: "stdio" (default) or "sse"
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-sse}
+      - SSE_HOST=${SSE_HOST:-0.0.0.0}
+      - SSE_PORT=${SSE_PORT:-3000}
 
-    # For stdio transport (required for Claude Desktop)
-    stdin_open: true
-    tty: true
+    # SSE transport port mapping
+    ports:
+      - "${SSE_PORT:-3000}:${SSE_PORT:-3000}"
 
     # Resource limits (recommended for production)
     deploy:
@@ -33,28 +36,14 @@ services:
     # Restart policy
     restart: unless-stopped
 
-    # Optional: Mount configuration
-    # volumes:
-    #   - ./config:/app/config:ro
-    #   - ./logs:/app/logs
-
-    # Optional: For HTTP transport (uncomment if needed)
-    # ports:
-    #   - "3000:3000"
-
-    # Optional: Network isolation (uncomment for stdio-only)
-    # network_mode: "none"
+    # Health check for SSE mode
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:3000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
     # Security options
     security_opt:
       - no-new-privileges:true
-
-    # Read-only root filesystem (with tmpfs for temp files)
-    # read_only: true
-    # tmpfs:
-    #   - /tmp
-
-# Optional: Define custom network
-# networks:
-#   mcp-network:
-#     driver: bridge

@@ -30,12 +30,17 @@ USER mcpuser
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Expose port (only needed if using HTTP transport)
-# EXPOSE 3000
+# Default transport (can be overridden: stdio or sse)
+ENV MCP_TRANSPORT=stdio \
+    SSE_HOST=0.0.0.0 \
+    SSE_PORT=3000
 
-# Health check (optional, for monitoring)
-# HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-#   CMD python -c "import sys; sys.exit(0)"
+# Expose port for SSE transport
+EXPOSE 3000
 
-# Run the MCP server with stdio transport
+# Health check for SSE mode
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD if [ "$MCP_TRANSPORT" = "sse" ]; then python -c "import httpx; httpx.get('http://localhost:3000/health').raise_for_status()"; else exit 0; fi
+
+# Run the MCP server
 CMD ["python", "-m", "donetick_mcp.server"]

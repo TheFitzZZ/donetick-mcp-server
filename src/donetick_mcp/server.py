@@ -1582,19 +1582,10 @@ def sanitize_url(url: str) -> str:
         return "[URL]"
 
 
-async def main_async():
-    """Async main entry point for the MCP server."""
-    import sys
+async def run_stdio_server():
+    """Run the MCP server with stdio transport."""
     from mcp.server.stdio import stdio_server
 
-    logger.info(f"Starting Donetick MCP Server v{__version__}")
-    logger.info(f"Connecting to: {sanitize_url(config.donetick_base_url)}")
-    logger.info(f"Username: {config.donetick_username}")
-
-    # Print to stderr for visibility in Claude Desktop
-    print(f"Donetick MCP Server v{__version__} starting...", file=sys.stderr)
-
-    # Run with stdio transport - this blocks until the server stops
     logger.info("Initializing stdio transport...")
     async with stdio_server() as (read_stream, write_stream):
         logger.info("Server running and ready to accept requests")
@@ -1603,6 +1594,96 @@ async def main_async():
             write_stream,
             app.create_initialization_options()
         )
+
+
+async def run_sse_server():
+    """Run the MCP server with SSE transport."""
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.routing import Mount, Route
+    from starlette.responses import JSONResponse
+    import uvicorn
+
+    # Create SSE transport
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        """Handle SSE connections."""
+        async with sse.connect_sse(
+            request.scope, request.receive, request._send
+        ) as streams:
+            await app.run(
+                streams[0],
+                streams[1],
+                app.create_initialization_options()
+            )
+
+    async def handle_messages(request):
+        """Handle POST messages from SSE clients."""
+        await sse.handle_post_message(request.scope, request.receive, request._send)
+
+    async def health_check(request):
+        """Health check endpoint."""
+        return JSONResponse({"status": "ok", "version": __version__})
+
+    # Create Starlette app with routes
+    starlette_app = Starlette(
+        debug=False,
+        routes=[
+            Route("/health", health_check, methods=["GET"]),
+            Route("/sse", handle_sse, methods=["GET"]),
+            Mount("/messages/", routes=[
+                Route("/", handle_messages, methods=["POST"]),
+            ]),
+        ],
+    )
+
+    logger.info(f"Starting SSE server on {config.sse_host}:{config.sse_port}")
+    logger.info(f"SSE endpoint: http://{config.sse_host}:{config.sse_port}/sse")
+
+    # Run with uvicorn
+    server_config = uvicorn.Config(
+        starlette_app,
+        host=config.sse_host,
+        port=config.sse_port,
+        log_level=config.log_level.lower(),
+    )
+    server = uvicorn.Server(server_config)
+    await server.serve()
+
+
+async def main_async():
+    """Async main entry point for the MCP server."""
+    import sys
+    import os
+
+    # Build identifier for debugging image versions
+    build_id = "BUILD-2026-01-11-SSE-A2"
+
+    # Debug: Print raw environment variables
+    raw_transport = os.getenv("MCP_TRANSPORT")
+    print(f"DEBUG: Raw MCP_TRANSPORT env var: '{raw_transport}'", file=sys.stderr)
+    print(f"DEBUG: config.transport value: '{config.transport}'", file=sys.stderr)
+    
+    # List all MCP/SSE related env vars
+    for key, value in os.environ.items():
+        if 'MCP' in key or 'SSE' in key or 'TRANSPORT' in key:
+            print(f"DEBUG: {key}={value}", file=sys.stderr)
+
+    logger.info(f"Starting Donetick MCP Server v{__version__} [{build_id}]")
+    logger.info(f"Connecting to: {sanitize_url(config.donetick_base_url)}")
+    logger.info(f"Username: {config.donetick_username}")
+    logger.info(f"Transport: {config.transport}")
+
+    # Print to stderr for visibility in Claude Desktop
+    print(f"Donetick MCP Server v{__version__} [{build_id}] starting...", file=sys.stderr)
+    print(f"Transport: {config.transport}", file=sys.stderr)
+
+    # Run with selected transport
+    if config.transport == "sse":
+        await run_sse_server()
+    else:
+        await run_stdio_server()
 
 
 def main():
